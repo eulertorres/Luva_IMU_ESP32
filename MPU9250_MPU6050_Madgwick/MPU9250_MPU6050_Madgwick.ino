@@ -15,9 +15,12 @@
 #include "MPU9250.h"
 #include "MadgwickAHRS.h"
 
-#define SerialDebug false         // set to true to get Serial output for debugging and dataset information
-#define onlyAngles true           // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2)
-#define calibrationMag9250 false  // Set true to calibrate the MPU920 magnetometer in a new enviorment
+#define SerialDebug true          // set to true to get Serial output for debugging and dataset information
+#define onlyAngles false            // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2)
+#define calibrationMag9250 false   // Set true to calibrate the MPU920 magnetometer in a new enviorment
+#define MPU6050upsidedown true     // Set true if MPU 6050 is mounted upside down (LED in the botton)
+
+char object[] = "Smartphone";      // Set the object to be printed in dataset
 
 // MPU9250 and 6250 Configuration. Specify sensor full scale
 /* Choices are:
@@ -43,8 +46,10 @@ bool wakeup;
 // Pin definitions-----------------------
 int  intPin1 = 9;  //  MPU9250 interrupt
 int  intPin2 = 8;  //  MPU6050 interrupt
-const int button = 7;
-int buttonstate = 0;
+const int button = 2;   // Buton to start printing Dataset
+const int Gled = 4;     // Extra Led to indicate printing
+bool buttonstate = false; // Dataset printing state
+bool lock = false;      // Avoid multiple entrie by the button
 
 bool intFlag1 = false;
 bool intFlag2 = false;
@@ -58,9 +63,8 @@ float   SelfTest[6];                    // holds results of gyro and acceleromet
 // These can be measured once and entered here or can be calculated each time the device is powered on
 float   gyroBias1[3] = {0.96, -0.21, 0.12}, accelBias1[3] = {0.00299, -0.00916, 0.00952};
 float   gyroBias2[3] = {0.96, -0.21, 0.12}, accelBias2[3] = {0.00299, -0.00916, 0.00952};
-//float   magBias1[3] = {71.04, 122.43, -36.90}, magScale1[3]  = {1.01, 1.03, 0.96}; // Bias corrections for gyro and accelerometer
-float   magBias1[3] = {-136.44, 331.37, -434.82}, magScale1[3]  = {0.99, 0.99, 1.02}; // Bias corrections for gyro and accelerometer
-float   magBias2[3] = {71.04, 122.43, -36.90}, magScale2[3]  = {1.01, 1.03, 0.96}; // Bias corrections for gyro and accelerometer
+float   magBias1[3] = {-95.96, 296.88, -428.83}, magScale1[3]  = {0.86, 0.98, 1.22}; // Bias corrections for gyro and accelerometer ------------------- IMPORTANT
+float   magBias2[3] = {71.04, 122.43, -36.90}, magScale2[3]  = {1.01, 1.03, 0.96}; // Bias corrections for gyro and accelerometer    ------------------- IMPORTANT
 
 float pitch1, yaw1, roll1, pitch2, yaw2, roll2;                   // absolute orientation
 float a12, a22, a31, a32, a33;             // rotation matrix coefficients for Euler angles and gravity components
@@ -89,7 +93,8 @@ void setup()
   MPU9250.I2Cscan(); // should detect BME280 at 0x77, MPU9250 at 0x71 
   
   // Set up the interrupt pin, it's set as active high, push-pull
-  //pinMode(button, INPUT_PULLUP);      // Button to start printing the measurements
+  pinMode(button,  INPUT);      // Button to start printing the measurements
+  pinMode(Gled, OUTPUT);
   pinMode(intPin1, INPUT);
   pinMode(intPin2, INPUT);
 
@@ -167,13 +172,13 @@ void setup()
  // Comment out if using pre-measured, pre-stored offset biases
   if(calibrationMag9250){
   MPU9250.magcalMPU9250(MPU1, magBias1, magScale1);
-  Serial.println("AK8963 1 mag biases (mG)"); Serial.println(magBias1[0]); Serial.println(magBias1[1]); Serial.println(magBias1[2]); 
-  Serial.println("AK8963 1 mag scale (mG)"); Serial.println(magScale1[0]); Serial.println(magScale1[1]); Serial.println(magScale1[2]);
+  Serial.print("Mag: COPY THAT (Bias): {"); Serial.print(magBias1[0]); Serial.print(", "); Serial.print(magBias1[1]); Serial.print(", "); Serial.print(magBias1[2]); Serial.println("}");
+  Serial.print("Mag: COPY THAT (Scale): {"); Serial.print(magScale1[0]); Serial.print(", "); Serial.print(magScale1[1]); Serial.print(", "); Serial.print(magScale1[2]); Serial.println("}");
   } 
 //  MPU9250.magcalMPU9250(MPU2, magBias2, magScale2);
 //  Serial.println("AK8963 2 mag biases (mG)"); Serial.println(magBias2[0]); Serial.println(magBias2[1]); Serial.println(magBias2[2]); 
 //  Serial.println("AK8963 2 mag scale (mG)"); Serial.println(magScale2[0]); Serial.println(magScale2[1]); Serial.println(magScale2[2]); 
-  delay(2000); // add delay to see results before serial spew of data
+  delay(200); // add delay to see results before serial spew of data
    
   attachInterrupt(intPin1, myinthandler1, RISING);  // define interrupt for intPin output of MPU9250 1
   attachInterrupt(intPin2, myinthandler2, RISING);  // define interrupt for intPin output of MPU9250 2
@@ -185,23 +190,23 @@ void setup()
     Serial.print("Could not connect to MPU9250 2: 0x"); Serial.println(d, HEX);
     while(1) ; // Loop forever if communication doesn't happen
   }
-Serial.print(Q[0]);Serial.print(Q[1]);Serial.print(Q[2]);Serial.println(Q[3]);
+//Serial.print(Q[0]);Serial.print(Q[1]);Serial.print(Q[2]);Serial.println(Q[3]);
+Serial.println("----------------| Clean the Serial information and press the glove button to start the dataset |--------------------------");
 }
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void loop()
 {  
-//   if (digitalRead(button)){
-//      if(buttonstate == 0){
-//        buttonstate = 1;
-//        }else{
-//          buttonstate==0;
-//          }
-//    }
+   int buttonstate_push = digitalRead(button);
+   if(buttonstate_push == HIGH && !lock){
+     buttonstate = !buttonstate;
+     lock = true;
+   } else if(buttonstate_push == LOW && lock){lock = false;};
+
    // If intPin1 goes high, either all data registers have new data
    //if(intFlag1 == true) {   // On interrupt, read data  ----------------------------------------------------------------------
-      intFlag1 = false;     // reset newData flag
+   //   intFlag1 = false;     // reset newData flag
       
      MPU9250.readMPU9250Data(MPU1, MPU9250Data); // INT cleared on any read
    
@@ -277,14 +282,17 @@ void loop()
     //Calculo feito com a MPU9250
     //MadgwickAHRSupdateIMU(-ax2, +ay2, +az2, gx2*pi/180.0f, -gy2*pi/180.0f, -gz2*pi/180.0f, Q);
     MadgwickAHRSupdateIMU(gx2*pi/180.0f, -gy2*pi/180.0f, -gz2*pi/180.0f, -ax2, +ay2, +az2, Q, deltat2);
-    Serial.print(Q[0]);Serial.print(Q[1]);Serial.print(Q[2]);Serial.println(Q[3]);
+    //Serial.print(Q[0]);Serial.print(Q[1]);Serial.print(Q[2]);Serial.println(Q[3]);
     }
-    /* end of MPU9250 2 interrupt handling ---------------------------------------------------------*/
+    /* end of MPU9250 2 interrupt handling ================================================================                                   
+    ----------------------------------------|DATASET PRINTING|---------------------------------------------
+    =======================================================================================================*/
    //}
-      
-    delay(250);
-    //if(SerialDebug && buttonstate) {
-    if(SerialDebug) {
+     
+    delay(65);
+    if(SerialDebug && buttonstate) {
+    digitalWrite(Gled, HIGH);
+    //if(SerialDebug) {
       if(!onlyAngles){
     Serial.print((int)1000*ax1);  
     Serial.print(", "); Serial.print((int)1000*ay1); 
@@ -301,11 +309,11 @@ void loop()
     Serial.print(", "); Serial.print( gx2, 2); 
     Serial.print(", "); Serial.print( gy2, 2); 
     Serial.print(", "); Serial.print( gz2, 2);
-    Serial.print(", "); Serial.print( (int)mx2 ); 
-    Serial.print(", "); Serial.print( (int)my2 ); 
-    Serial.print(", "); Serial.print( (int)mz2 );
+//    Serial.print(", "); Serial.print( (int)mx2 ); 
+//    Serial.print(", "); Serial.print( (int)my2 ); 
+//    Serial.print(", "); Serial.print( (int)mz2 );
       }
-   }               
+   } else {digitalWrite(Gled, LOW);}               
    
     a12 =   2.0f * (q[1] * q[2] + q[0] * q[3]);
     a22 =   q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3];
@@ -317,16 +325,15 @@ void loop()
     yaw1   = atan2f(a12, a22);
     pitch1 *= 180.0f / pi;
     yaw1   *= 180.0f / pi; 
-    yaw1   += 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-    if(yaw1 < 0) yaw1   += 360.0f; // Ensure yaw stays between 0 and 360
+    yaw1   += 21.56f; // Declination at Sobradinho, Brasília at 21 degrees 56 minutes and 23 seconds on 31-01-2022
+    //if(yaw1 < 0) yaw1   += 360.0f; // Ensure yaw stays between 0 and 360
     roll1  *= 180.0f / pi;
     lin_ax1 = ax1 + a31;
     lin_ay1 = ay1 + a32;
     lin_az1 = az1 - a33;
 
-    //if(SerialDebug && buttonstate) {
-    if(SerialDebug) {
-    //Serial.print("MPU9250 1 Yaw, Pitch, Roll: ");
+    if(SerialDebug && buttonstate) {
+    //if(SerialDebug) {
     Serial.print(", ");Serial.print(roll1, 2);
     Serial.print(", ");Serial.print(pitch1, 2);
     Serial.print(", ");Serial.print(yaw1, 2);
@@ -350,24 +357,31 @@ void loop()
     AA31 =   2.0f * (Q[0] * Q[1] + Q[2] * Q[3]);
     AA32 =   2.0f * (Q[1] * Q[3] - Q[0] * Q[2]);
     AA33 =   Q[0] * Q[0] - Q[1] * Q[1] - Q[2] * Q[2] + Q[3] * Q[3];
-    pitch2 = -asinf(AA32);
-    roll2  = atan2f(AA31, AA33);
-    yaw2   = atan2f(AA12, AA22);
+    //pitch2 = -asinf(AA32);
+    //pitch2 = atan2f(2.0f*Q[0]*Q[3]-2.0f*Q[1]*Q[2], 1.0f-2.0f*Q[0]*Q[0]-2.0f*Q[2]*Q[2]);
+    roll2 = acosf(Q[0]/sqrt(Q[0]*Q[0] + Q[2]*Q[2]))*2.0f;    // +180 because MPU6050 is mounted upside down
+    pitch2  = atan2f(AA31, AA33);                            // -180 because MPU6050 is mounted upside down
+    //rolll2 = acosf(Q[0]/sqrt(Q[0]*Q[0] + Q[1]*Q[1]))*2.0f;
+    //yaw2   = atan2f(AA12, AA22);
     pitch2 *= 180.0f / pi;
-    yaw2   *= 180.0f / pi; 
-    yaw2   += 21.56f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-    if(yaw2 < 0) yaw2   += 360.0f; // Ensure yaw stays between 0 and 360
     roll2  *= 180.0f / pi;
-    lin_ax2 = ax2 + AA31;
-    lin_ay2 = ay2 + AA32;
-    lin_az2 = az2 - AA33;
+    //yaw2   *= 180.0f / pi; 
+    //yaw2   += 21.56f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+    //if(yaw2 < 0) yaw2   += 360.0f; // Ensure yaw stays between 0 and 360
+    if(MPU6050upsidedown){pitch2 += 180.0f; roll2 += 180.0f;}
+    pitch2 = wrap(pitch2, 180.0f);
+    roll2 = wrap(roll2, 180.0f);
+    //roll2 = -roll2;
+//    lin_ax2 = ax2 + AA31;
+//    lin_ay2 = ay2 + AA32;
+//    lin_az2 = az2 - AA33;
 
-    //if(SerialDebug && buttonstate) {
-    if(SerialDebug) {
+    if(SerialDebug && buttonstate) {
+    //if(SerialDebug) {
     //Serial.print("MPU9250 2 Yaw, Pitch, Roll: ");
     Serial.print(", ");Serial.print(roll2, 2);
     Serial.print(", ");Serial.print(pitch2, 2);
-    Serial.print(", ");Serial.println("Power-Circular");
+    Serial.print(", ");Serial.println(object);
 
 //    Serial.print("Grav_x, Grav_y, Grav_z: ");
 //    Serial.print(-AA31*1000.0f, 2);
@@ -381,9 +395,7 @@ void loop()
 //    Serial.print(lin_ay2*1000.0f, 2);
 //    Serial.print(", ");
 //    Serial.print(lin_az2*1000.0f, 2);  Serial.println(" mg");      
-    }else{
-      Serial.println("////////////////////////////////////////////////////////////////////////");
-      }
+    }
 
 //} /* end of alarm handling */
 
@@ -392,7 +404,7 @@ void loop()
 //===================================================================================================================
 //====== Set of useful functions
 //===================================================================================================================
-
+//
 void myinthandler1()
 {
   intFlag1 = true;
@@ -588,3 +600,10 @@ void MadgwickQuaternionUpdate1(float ax, float ay, float az, float gx, float gy,
 //            Q[3] = q4 * norm;
 //
 //        }
+
+// Wrap an angle in the range [-limit,+limit]
+static float wrap(float angle,float limit){
+  while (angle >  limit) angle -= 2*limit;
+  while (angle < -limit) angle += 2*limit;
+  return angle;
+}
