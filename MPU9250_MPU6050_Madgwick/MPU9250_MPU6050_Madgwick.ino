@@ -1,26 +1,26 @@
 /*============= Cration of a dataset using a sensored glove (1 finger) with MPU6050 and MPU9250===============================*/
-/* 07/6/2017 Copyright Tlera Corporation
- *  
- *  Created by Kris Winer
- *  Edited by Euler torres to Glove aplication 30/01/2022
+/*  Created by Euler torres to Glove aplication 30/01/2022
  *  Lybrary by Sebastian Madgwick [Madgwick] https://x-io.co.uk/open-source-imu-and-ahrs-algorithms/
  *  
  Reading, Calculation and estimation 2 IMU angles (MPU9250 - 1) and (MPU6050 - 2)
-  Library may be used freely and without limit with attribution.
-  Estimation of angles (Roll, Pitch, Yall) of MPU 9250 using Magnetic, Angular Rate and Gravity (MARG) and
-  estimation of angles (Roll, Pitch) of MPU 6050 using IMU
+  Estimation of angles (Roll, Pitch, Yall) of MPU 9250 using Magnetic, Angular Rate and Gravity (MARG),
+  Estimation of angles (Roll, Pitch) of MPU 6050 using Angular rate
+  Estimation of force of the grip applied by each finger using FSLP (Force Sensing Linear Potentiometer)
+  Estimation of the position of the object using FSLP (Force Sensing Linear Potentiometer)
 */
  
-#include "Wire.h"   
-#include "MPU9250.h"
-#include "MadgwickAHRS.h"
+#include "Wire.h"               //Biblioteca para comunicação I²C
+#include "MPU9250.h"            //Header file wich includes all IMU communication
+#include "MadgwickAHRS.h"       //Madwick Filter header file, for both IMU
+#include "FSLP.h"               //FSLP header file, to get te measurements
 
-#define SerialDebug true          // set to true to get Serial output for debugging and dataset information
-#define onlyAngles false            // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2)
-#define calibrationMag9250 false   // Set true to calibrate the MPU920 magnetometer in a new enviorment
-#define MPU6050upsidedown true     // Set true if MPU 6050 is mounted upside down (LED in the botton)
+#define SerialDebug true          // set true to get Serial output for debugging and dataset information
+#define onlyAngles true           // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2)
+#define calibrationMag9250 false  // Set true to calibrate the MPU920 magnetometer in a new enviorment
+#define MPU6050upsidedown true    // Set true if MPU 6050 is mounted upside down (LED in the botton)
+#define gyro_accel_cal false      
 
-char object[] = "Smartphone";      // Set the object to be printed in dataset
+char object[] = "Smartphone";     // Set the object to be printed in dataset
 
 // MPU9250 and 6250 Configuration. Specify sensor full scale
 /* Choices are:
@@ -35,6 +35,9 @@ uint8_t Gscale = GFS_250DPS, Ascale = AFS_2G, Mscale = MFS_16BITS, Mmode = M_100
 float aRes, gRes, mRes;      // scale resolutions per LSB for the sensors
 float motion = 0;            // check on linear acceleration to determine motion
 
+uint8_t movment = 0;
+uint8_t countmov = 0;
+
 // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)----------------------------------------------------
 float pi = 3.141592653589793238462643383279502884f;
 float GyroMeasError = pi * (40.0f / 180.0f);        // gyroscope measurement error in rads/s (start at 40 deg/s)
@@ -43,16 +46,16 @@ float beta1 = sqrtf(3.0f / 4.0f) * GyroMeasError;   // compute beta
 float zeta = sqrtf(3.0f / 4.0f) * GyroMeasDrift;    // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
 bool wakeup;
 
-// Pin definitions-----------------------
-int  intPin1 = 9;  //  MPU9250 interrupt
-int  intPin2 = 8;  //  MPU6050 interrupt
-const int button = 2;   // Buton to start printing Dataset
-const int Gled = 4;     // Extra Led to indicate printing
-bool buttonstate = false; // Dataset printing state
-bool lock = false;      // Avoid multiple entrie by the button
+// ESP32 GPIOs definitions-------------------------------------------
+const int button = 2;       // Buton to start printing Dataset
+const int Gled = 4;         // Extra Led to indicate printing
+bool buttonstate = false;   // Dataset printing state
+bool lock = false;          // Avoid multiple entries by the button
+const int FSL = 25;	        // FSLP sense line
+const int FD1 = 32;	        // FSLP D1
+const int FD2 = 33;	        // FSLP D2
+const int FR0 = 26;		      // Resistor 10 kOhms
 
-bool intFlag1 = false;
-bool intFlag2 = false;
 bool newMagData = false;
 
 int16_t MPU9250Data[7], MPU6050Data[7]; // used to read all 14 bytes at once from the MPU9250 accel/gyro
@@ -60,18 +63,18 @@ int16_t magCount1[3], magCount2[3];     // Stores the 16-bit signed magnetometer
 float   magCalibration1[3] = {0, 0, 0}, magCalibration2[3] = {0, 0, 0};  // Factory mag calibration and mag bias
 float   SelfTest[6];                    // holds results of gyro and accelerometer self test
 
-// These can be measured once and entered here or can be calculated each time the device is powered on
-float   gyroBias1[3] = {0.96, -0.21, 0.12}, accelBias1[3] = {0.00299, -0.00916, 0.00952};
-float   gyroBias2[3] = {0.96, -0.21, 0.12}, accelBias2[3] = {0.00299, -0.00916, 0.00952};
-float   magBias1[3] = {-95.96, 296.88, -428.83}, magScale1[3]  = {0.86, 0.98, 1.22}; // Bias corrections for gyro and accelerometer ------------------- IMPORTANT
-float   magBias2[3] = {71.04, 122.43, -36.90}, magScale2[3]  = {1.01, 1.03, 0.96}; // Bias corrections for gyro and accelerometer    ------------------- IMPORTANT
+// These can be measured once and entered here or can be calculated each time the device is powered on ----- IMPORTANT -----------------
+float   gyroBias1[3] = {0.96, -0.21, 0.12}, accelBias1[3] = {0.00299, -0.00916, 0.00952}; //Bias corrections for IMU 1 gyro and accelerometer
+float   gyroBias2[3] = {0.96, -0.21, 0.12}, accelBias2[3] = {0.00299, -0.00916, 0.00952}; //Bias corrections for IMU 2 gyro and accelerometer
+float   magBias1[3] = {-95.96, 296.88, -428.83}, magScale1[3]  = {0.86, 0.98, 1.22}; // Bias corrections for magnetometer
+float   magBias2[3] = {71.04, 122.43, -36.90}, magScale2[3]  = {1.01, 1.03, 0.96};   // Bias corrections for gyro and accelerometer
 
 float pitch1, yaw1, roll1, pitch2, yaw2, roll2;                   // absolute orientation
-float a12, a22, a31, a32, a33;             // rotation matrix coefficients for Euler angles and gravity components
-float AA12, AA22, AA31, AA32, AA33;        // rotation matrix coefficients for Euler angles and gravity components
+float a12, a22, a31, a32, a33;                                    // rotation matrix coefficients for Euler angles and gravity components
+float AA12, AA22, AA31, AA32, AA33;                               // rotation matrix coefficients for Euler angles and gravity components
 float deltat1 = 0.0f, sum1 = 0.0f, deltat2 = 0.0f, sum2 = 0.0f;   // integration interval for both filter schemes
-uint32_t lastUpdate1 = 0, lastUpdate2 = 0; // used to calculate integration interval
-uint32_t Now1 = 0, Now2 = 0;               // used to calculate integration interval
+uint32_t lastUpdate1 = 0, lastUpdate2 = 0;                        // used to calculate integration interval
+uint32_t Now1 = 0, Now2 = 0;                                      // used to calculate integration interval
 
 float ax1, ay1, az1, gx1, gy1, gz1, mx1, my1, mz1; // variables to hold latest sensor data values 
 float ax2, ay2, az2, gx2, gy2, gz2, mx2, my2, mz2; // variables to hold latest sensor data values 
@@ -80,7 +83,8 @@ float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             // vector to hold quaternion
 float lin_ax2, lin_ay2, lin_az2;                   // linear acceleration (acceleration with gravity component subtracted)
 float Q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             // vector to hold quaternion
 
-MPU9250 MPU9250(intPin1); // instantiate MPU9250 class
+//MPU9250 MPU9250(); // instantiate MPU9250 class
+FSLP FSLP;
 
 void setup()
 {
@@ -95,21 +99,19 @@ void setup()
   // Set up the interrupt pin, it's set as active high, push-pull
   pinMode(button,  INPUT);      // Button to start printing the measurements
   pinMode(Gled, OUTPUT);
-  pinMode(intPin1, INPUT);
-  pinMode(intPin2, INPUT);
-
+  
    /* Configure the MPU9250 */
   // Read the WHO_AM_I register, this is a good test of communication
-  Serial.println("MPU9250 9-axis motion sensor...");
+  Serial.println("Lendo registrador WHO_AM_I...");
   uint8_t c = MPU9250.getMPU9250ID(MPU1);
-  Serial.print("MPU9250_1 "); Serial.print("I AM "); Serial.print(c, HEX); Serial.print(" I should be "); Serial.println(0x71, HEX);
+  Serial.print("MPU9250_1 "); Serial.print("EU SOU: "); Serial.print(c, HEX); Serial.print("EU DEVERIA SER: "); Serial.println(0x71, HEX);
   uint8_t d = MPU9250.getMPU9250ID(MPU2);
-  Serial.print("MPU6250_2 "); Serial.print("I AM "); Serial.print(d, HEX); Serial.print(" I should be "); Serial.println(0x68, HEX);
+  Serial.print("MPU6050_2 "); Serial.print("EU SOU: "); Serial.print(d, HEX); Serial.print("EU DEVERIA SER: "); Serial.println(0x68, HEX);
   delay(1000);
   
   if (c == 0x71 && d == 0x68 ) // WHO_AM_I should always be 0x71 for MPU9250, 0x73 for MPU9255, 0x69 for MPU6050 
   {  
-    Serial.println("MPU9250 1 and MPU 6050 2 are online...");
+    Serial.println("MPU9250_1 e MPU 6050_2 estão online...");
     
     MPU9250.resetMPU9250(MPU1); // start by resetting MPU9250_1
     MPU9250.resetMPU9250(MPU2); // start by resetting MPU9250_2
@@ -137,29 +139,30 @@ void setup()
   gRes = MPU9250.getGres(Gscale);
   mRes = MPU9250.getMres(Mscale);
 
- // Comment out if using pre-measured, pre-stored offset biases
-  MPU9250.calibrateMPU9250(MPU1, gyroBias1, accelBias1); // Calibrate gyro and accelerometers, load biases in bias registers
-  Serial.println("MPU1 accel biases (mg)"); Serial.println(1000.*accelBias1[0]); Serial.println(1000.*accelBias1[1]); Serial.println(1000.*accelBias1[2]);
-  Serial.println("MPU1 gyro biases (dps)"); Serial.println(gyroBias1[0]); Serial.println(gyroBias1[1]); Serial.println(gyroBias1[2]);
-  MPU9250.calibrateMPU9250(MPU2, gyroBias2, accelBias2); // Calibrate gyro and accelerometers, load biases in bias registers
-  Serial.println("MPU2 accel biases (mg)"); Serial.println(1000.*accelBias2[0]); Serial.println(1000.*accelBias2[1]); Serial.println(1000.*accelBias2[2]);
-  Serial.println("MPU2 gyro biases (dps)"); Serial.println(gyroBias2[0]); Serial.println(gyroBias2[1]); Serial.println(gyroBias2[2]);
-  delay(1000); 
+  if(gyro_accel_cal){ //If this variable is set, a new calibration will be made to both IMUs
+    MPU9250.calibrateMPU9250(MPU1, gyroBias1, accelBias1); // Calibrate gyro and accelerometers, load biases in bias registers
+    Serial.println("MPU1 accel biases (mg)"); Serial.println(1000.*accelBias1[0]); Serial.println(1000.*accelBias1[1]); Serial.println(1000.*accelBias1[2]);
+    Serial.println("MPU1 gyro biases (dps)"); Serial.println(gyroBias1[0]); Serial.println(gyroBias1[1]); Serial.println(gyroBias1[2]);
+    MPU9250.calibrateMPU9250(MPU2, gyroBias2, accelBias2); // Calibrate gyro and accelerometers, load biases in bias registers
+    Serial.println("MPU2 accel biases (mg)"); Serial.println(1000.*accelBias2[0]); Serial.println(1000.*accelBias2[1]); Serial.println(1000.*accelBias2[2]);
+    Serial.println("MPU2 gyro biases (dps)"); Serial.println(gyroBias2[0]); Serial.println(gyroBias2[1]); Serial.println(gyroBias2[2]);
+  }
+  delay(1000);
   
   MPU9250.initMPU9250(MPU1, Ascale, Gscale, sampleRate); 
   MPU9250.initMPU9250(MPU2, Ascale, Gscale, sampleRate); 
-  Serial.println("MPU9250 1 and MPU6050 2 initialized for active data mode...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
+  Serial.println("MPU9250_1 e MPU6050_2 Iniciados com modo de leitura ativa...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
   
   // Read the WHO_AM_I register of the magnetometer, this is a good test of communication
   byte e = MPU9250.getAK8963CID(MPU1);  // Read WHO_AM_I register for AK8963
-  Serial.print("AK8963 1 "); Serial.print("I AM "); Serial.print(e, HEX); Serial.print(" I should be "); Serial.println(0x48, HEX);
+  Serial.print("Magnetômetro AK8963_1 "); Serial.print("EU SOU: "); Serial.print(e, HEX); Serial.print("EU DEVERIA SER: "); Serial.println(0x48, HEX);
 //  byte f = MPU9250.getAK8963CID(MPU2);  // Read WHO_AM_I register for AK8963
 //  Serial.print("AK8963 2 "); Serial.print("I AM "); Serial.print(f, HEX); Serial.print(" I should be "); Serial.println(0x48, HEX);
   delay(1000); 
   
   // Get magnetometer calibration from AK8963 ROM
   MPU9250.initAK8963Slave(MPU1, Mscale, Mmode, magCalibration1); Serial.println("AK8963 1 initialized for active data mode...."); // Initialize device 1 for active mode read of magnetometer
-  Serial.println("Calibration values for mag 1: ");
+  Serial.println("Calibração para o mag_1: ");
   Serial.print("X-Axis sensitivity adjustment value "); Serial.println(magCalibration1[0], 2);
   Serial.print("Y-Axis sensitivity adjustment value "); Serial.println(magCalibration1[1], 2);
   Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration1[2], 2);
@@ -170,31 +173,24 @@ void setup()
 //  Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration2[2], 2);
   
  // Comment out if using pre-measured, pre-stored offset biases
-  if(calibrationMag9250){
-  MPU9250.magcalMPU9250(MPU1, magBias1, magScale1);
-  Serial.print("Mag: COPY THAT (Bias): {"); Serial.print(magBias1[0]); Serial.print(", "); Serial.print(magBias1[1]); Serial.print(", "); Serial.print(magBias1[2]); Serial.println("}");
-  Serial.print("Mag: COPY THAT (Scale): {"); Serial.print(magScale1[0]); Serial.print(", "); Serial.print(magScale1[1]); Serial.print(", "); Serial.print(magScale1[2]); Serial.println("}");
-  } 
-//  MPU9250.magcalMPU9250(MPU2, magBias2, magScale2);
-//  Serial.println("AK8963 2 mag biases (mG)"); Serial.println(magBias2[0]); Serial.println(magBias2[1]); Serial.println(magBias2[2]); 
-//  Serial.println("AK8963 2 mag scale (mG)"); Serial.println(magScale2[0]); Serial.println(magScale2[1]); Serial.println(magScale2[2]); 
+    if(calibrationMag9250){
+      MPU9250.magcalMPU9250(MPU1, magBias1, magScale1); //Calibração com movimentos em 8
+      Serial.print("Mag1: COPY THAT (Bias): {"); Serial.print(magBias1[0]); Serial.print(", "); Serial.print(magBias1[1]); Serial.print(", "); Serial.print(magBias1[2]); Serial.println("}");
+      Serial.print("Mag1: COPY THAT (Scale): {"); Serial.print(magScale1[0]); Serial.print(", "); Serial.print(magScale1[1]); Serial.print(", "); Serial.print(magScale1[2]); Serial.println("}");
+//    MPU9250.magcalMPU9250(MPU2, magBias2, magScale2);
+//    Serial.println("Mag2: COPY THAT (Bias): {"); Serial.println(magBias2[0]); Serial.println(magBias2[1]); Serial.println(magBias2[2]); 
+//    Serial.println("Mag2: COPY THAT (Scale): {"); Serial.println(magScale2[0]); Serial.println(magScale2[1]); Serial.println(magScale2[2]); 
+    } 
   delay(200); // add delay to see results before serial spew of data
-   
-  attachInterrupt(intPin1, myinthandler1, RISING);  // define interrupt for intPin output of MPU9250 1
-  attachInterrupt(intPin2, myinthandler2, RISING);  // define interrupt for intPin output of MPU9250 2
-  
   }
   else
   {
-    Serial.print("Could not connect to MPU9250 1: 0x"); Serial.println(c, HEX);
-    Serial.print("Could not connect to MPU9250 2: 0x"); Serial.println(d, HEX);
+    Serial.print("MPU9250 1 Não reconhecida: 0x"); Serial.println(c, HEX);
+    Serial.print("MPU9250 2 não reconhecida: 0x"); Serial.println(d, HEX);
     while(1) ; // Loop forever if communication doesn't happen
   }
-//Serial.print(Q[0]);Serial.print(Q[1]);Serial.print(Q[2]);Serial.println(Q[3]);
 Serial.println("----------------| Clean the Serial information and press the glove button to start the dataset |--------------------------");
 }
-
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void loop()
 {  
@@ -204,9 +200,12 @@ void loop()
      lock = true;
    } else if(buttonstate_push == LOW && lock){lock = false;};
 
-   // If intPin1 goes high, either all data registers have new data
-   //if(intFlag1 == true) {   // On interrupt, read data  ----------------------------------------------------------------------
-   //   intFlag1 = false;     // reset newData flag
+     if (pressure == 0){
+      movment = 0;
+      countmov = 0;
+      } else{countmov = countmov + 1;}
+
+     if(countmov > 15){movment = 1;}
       
      MPU9250.readMPU9250Data(MPU1, MPU9250Data); // INT cleared on any read
    
@@ -237,15 +236,8 @@ void loop()
     Now1 = micros();
     deltat1 = ((Now1 - lastUpdate1)/1000000.0f); // set integration time by time elapsed since last filter update
     lastUpdate1 = Now1;
-
     MadgwickQuaternionUpdate1(-ax1, +ay1, +az1, gx1*pi/180.0f, -gy1*pi/180.0f, -gz1*pi/180.0f,  my1,  -mx1, mz1);
     }
-    /* end of MPU9250 1 interrupt handling ----------------------------------------------------------------------------------------*/
-   //}
-
-   // If intPin2 goes high, either all data registers have new data
-   //if(intFlag2 == true) {   // On interrupt, read data
-      intFlag2 = false;     // reset newData flag
       
      MPU9250.readMPU9250Data(MPU2, MPU6050Data); // INT cleared on any read
    
@@ -376,11 +368,19 @@ void loop()
 //    lin_ay2 = ay2 + AA32;
 //    lin_az2 = az2 - AA33;
 
+
+    float pressure = FSLP.fslpGetPressure(FSL, FD1, FD2, FR0);
+    if(pressure > 0){pressure = 0.01f*pressure*pressure + 0.5f*pressure+12;}
+    int pos = FSLP.fslpGetPosition(FSL, FD1, FD2, FR0);
+    float pos_mm = pos*0.018315f;
     if(SerialDebug && buttonstate) {
     //if(SerialDebug) {
     //Serial.print("MPU9250 2 Yaw, Pitch, Roll: ");
     Serial.print(", ");Serial.print(roll2, 2);
     Serial.print(", ");Serial.print(pitch2, 2);
+    Serial.print(", ");Serial.print(pressure);
+    Serial.print(", ");Serial.print(pos_mm);
+    Serial.print(", ");Serial.print(movment);
     Serial.print(", ");Serial.println(object);
 
 //    Serial.print("Grav_x, Grav_y, Grav_z: ");
