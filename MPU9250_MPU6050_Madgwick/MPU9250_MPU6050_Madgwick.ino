@@ -18,7 +18,8 @@
 #define onlyAngles true           // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2)
 #define calibrationMag9250 false  // Set true to calibrate the MPU920 magnetometer in a new enviorment
 #define MPU6050upsidedown true    // Set true if MPU 6050 is mounted upside down (LED in the botton)
-#define gyro_accel_cal false      
+#define gyro_accel_cal false      // set true to calibrate gyro and accelerometer of both IMUs
+#define factory_test true         // Set true to test the IMU's integrity
 
 char object[] = "Smartphone";     // Set the object to be printed in dataset
 
@@ -36,7 +37,6 @@ float aRes, gRes, mRes;      // scale resolutions per LSB for the sensors
 float motion = 0;            // check on linear acceleration to determine motion
 
 uint8_t movment = 0;
-uint8_t countmov = 0;
 
 // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)----------------------------------------------------
 float pi = 3.141592653589793238462643383279502884f;
@@ -78,9 +78,9 @@ uint32_t Now1 = 0, Now2 = 0;                                      // used to cal
 
 float ax1, ay1, az1, gx1, gy1, gz1, mx1, my1, mz1; // variables to hold latest sensor data values 
 float ax2, ay2, az2, gx2, gy2, gz2, mx2, my2, mz2; // variables to hold latest sensor data values 
-float lin_ax1, lin_ay1, lin_az1;                   // linear acceleration (acceleration with gravity component subtracted)
+//float lin_ax1, lin_ay1, lin_az1;                   // linear acceleration (acceleration with gravity component subtracted)
 float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             // vector to hold quaternion
-float lin_ax2, lin_ay2, lin_az2;                   // linear acceleration (acceleration with gravity component subtracted)
+//float lin_ax2, lin_ay2, lin_az2;                   // linear acceleration (acceleration with gravity component subtracted)
 float Q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             // vector to hold quaternion
 
 //MPU9250 MPU9250(); // instantiate MPU9250 class
@@ -94,44 +94,46 @@ void setup()
   Wire.setClock(400000); // I2C frequency at 400 kHz
   delay(1000);
 
-  MPU9250.I2Cscan(); // should detect BME280 at 0x77, MPU9250 at 0x71 
+  MPU9250.I2Cscan();            //MPU9250 at 0x71 
   
-  // Set up the interrupt pin, it's set as active high, push-pull
+  // Set up the button and gled for starting to print dataset
   pinMode(button,  INPUT);      // Button to start printing the measurements
   pinMode(Gled, OUTPUT);
   
-   /* Configure the MPU9250 */
+  /* Configuration of IMUs */
   // Read the WHO_AM_I register, this is a good test of communication
   Serial.println("Lendo registrador WHO_AM_I...");
   uint8_t c = MPU9250.getMPU9250ID(MPU1);
-  Serial.print("MPU9250_1 "); Serial.print("EU SOU: "); Serial.print(c, HEX); Serial.print("EU DEVERIA SER: "); Serial.println(0x71, HEX);
+  Serial.print("MPU9250_1 address: "); Serial.print(c, HEX); Serial.print("should be: "); Serial.println(0x71, HEX);
   uint8_t d = MPU9250.getMPU9250ID(MPU2);
-  Serial.print("MPU6050_2 "); Serial.print("EU SOU: "); Serial.print(d, HEX); Serial.print("EU DEVERIA SER: "); Serial.println(0x68, HEX);
+  Serial.print("MPU6050_2 address"); Serial.print(d, HEX); Serial.print("should be: "); Serial.println(0x68, HEX);
   delay(1000);
   
   if (c == 0x71 && d == 0x68 ) // WHO_AM_I should always be 0x71 for MPU9250, 0x73 for MPU9255, 0x69 for MPU6050 
   {  
-    Serial.println("MPU9250_1 e MPU 6050_2 estão online...");
+    Serial.println("MPU9250_1 and MPU 6050_2 are...");
     
     MPU9250.resetMPU9250(MPU1); // start by resetting MPU9250_1
-    MPU9250.resetMPU9250(MPU2); // start by resetting MPU9250_2
-    
-    MPU9250.SelfTest(MPU1, SelfTest); // Start by performing self test and reporting values
-    Serial.println("Self Test for MPU9250 #1:");
-    Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
-    Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
-    Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
-    Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
-    Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
-    Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
-    MPU9250.SelfTest(MPU2, SelfTest); // Start by performing self test and reporting values
-    Serial.println("Self Test for MPU9250 #2:");
-    Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
-    Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
-    Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
-    Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
-    Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
-    Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
+    MPU9250.resetMPU9250(MPU2); // start by resetting MPU6050_2
+
+    if(factory_test){
+      MPU9250.SelfTest(MPU1, SelfTest); // Start by performing self test and reporting values
+      Serial.println("Self Test for MPU9250 #1:");
+      Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
+      Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
+      Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
+      Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
+      Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
+      Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
+      MPU9250.SelfTest(MPU2, SelfTest); // Start by performing self test and reporting values
+      Serial.println("Self Test for MPU9250 #2:");
+      Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
+      Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
+      Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
+      Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
+      Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
+      Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
+    }
     delay(1000);
 
   // get sensor resolutions, only need to do this once, same for both MPU9250s for now
@@ -151,18 +153,18 @@ void setup()
   
   MPU9250.initMPU9250(MPU1, Ascale, Gscale, sampleRate); 
   MPU9250.initMPU9250(MPU2, Ascale, Gscale, sampleRate); 
-  Serial.println("MPU9250_1 e MPU6050_2 Iniciados com modo de leitura ativa...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
+  Serial.println("MPU9250_1 e MPU6050_2 activated"); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
   
   // Read the WHO_AM_I register of the magnetometer, this is a good test of communication
   byte e = MPU9250.getAK8963CID(MPU1);  // Read WHO_AM_I register for AK8963
-  Serial.print("Magnetômetro AK8963_1 "); Serial.print("EU SOU: "); Serial.print(e, HEX); Serial.print("EU DEVERIA SER: "); Serial.println(0x48, HEX);
+  Serial.print("Magnetometer AK8963_1 address: "); Serial.print(e, HEX); Serial.print("should be: "); Serial.println(0x48, HEX);
 //  byte f = MPU9250.getAK8963CID(MPU2);  // Read WHO_AM_I register for AK8963
 //  Serial.print("AK8963 2 "); Serial.print("I AM "); Serial.print(f, HEX); Serial.print(" I should be "); Serial.println(0x48, HEX);
   delay(1000); 
   
   // Get magnetometer calibration from AK8963 ROM
-  MPU9250.initAK8963Slave(MPU1, Mscale, Mmode, magCalibration1); Serial.println("AK8963 1 initialized for active data mode...."); // Initialize device 1 for active mode read of magnetometer
-  Serial.println("Calibração para o mag_1: ");
+  MPU9250.initAK8963Slave(MPU1, Mscale, Mmode, magCalibration1); Serial.println("AK8963_1 initialized"); // Initialize device 1 for active mode read of magnetometer
+  Serial.println("Calibration for mag_1: ");
   Serial.print("X-Axis sensitivity adjustment value "); Serial.println(magCalibration1[0], 2);
   Serial.print("Y-Axis sensitivity adjustment value "); Serial.println(magCalibration1[1], 2);
   Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration1[2], 2);
@@ -191,69 +193,58 @@ void setup()
   }
 Serial.println("----------------| Clean the Serial information and press the glove button to start the dataset |--------------------------");
 }
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////       LOOP       //////////////////////////////////////////////////////////////////
 void loop()
 {  
-   int buttonstate_push = digitalRead(button);
+   int buttonstate_push = digitalRead(button);                  // Check if the button is pressed
    if(buttonstate_push == HIGH && !lock){
-     buttonstate = !buttonstate;
+     buttonstate = !buttonstate;                                // If it has been pressed and it's not locked. change the state of the button
      lock = true;
-   } else if(buttonstate_push == LOW && lock){lock = false;};
+   } else if(buttonstate_push == LOW && lock){lock = false;};   // If the button is relesed, unlock to another press.
 
-     if (pressure == 0){
+     if (pressure == 0){                   // If no object is being held, then there is no prresure nor force being applied
       movment = 0;
-      countmov = 0;
-      } else{countmov = countmov + 1;}
-
-     if(countmov > 15){movment = 1;}
-      
-     MPU9250.readMPU9250Data(MPU1, MPU9250Data); // INT cleared on any read
-   
+      pos_mm = 0;
+      }else{movment = 1;}
+           
+     MPU9250.readMPU9250Data(MPU1, MPU9250Data);    // Readings end calculations for the first IMU ------------------------------------
     // Now we'll calculate the accleration value into actual g's
      ax1 = (float)MPU9250Data[0]*aRes - accelBias1[0];  // get actual g value, this depends on scale being set
      ay1 = (float)MPU9250Data[1]*aRes - accelBias1[1];   
      az1 = (float)MPU9250Data[2]*aRes - accelBias1[2];  
-
     // Calculate the gyro value into actual degrees per second
      gx1 = (float)MPU9250Data[4]*gRes;  // get actual gyro value, this depends on scale being set
      gy1 = (float)MPU9250Data[5]*gRes;  
      gz1 = (float)MPU9250Data[6]*gRes; 
-  
-//    if( MPU9250.checkNewMagData() == true) { // wait for magnetometer data ready bit to be set
-      MPU9250.readMagData(MPU1, magCount1);  // Read the x/y/z adc values
-  
+     if( MPU9250.checkNewMagData() == true) {MPU9250.readMagData(MPU1, magCount1);}  // magnetometer data if its available
     // Calculate the magnetometer values in milliGauss
     // Include factory calibration per data sheet and user environmental corrections
-      mx1 = (float)magCount1[0]*mRes*magCalibration1[0] - magBias1[0];  // get actual magnetometer value, this depends on scale being set
-      my1 = (float)magCount1[1]*mRes*magCalibration1[1] - magBias1[1];  
-      mz1 = (float)magCount1[2]*mRes*magCalibration1[2] - magBias1[2];  
-      mx1 *= magScale1[0];
-      my1 *= magScale1[1];
-      mz1 *= magScale1[2]; 
-//    }   
-  
-    for(uint8_t i = 0; i < 10; i++) { // iterate a fixed number of times per data read cycle
-    Now1 = micros();
-    deltat1 = ((Now1 - lastUpdate1)/1000000.0f); // set integration time by time elapsed since last filter update
-    lastUpdate1 = Now1;
-    MadgwickQuaternionUpdate1(-ax1, +ay1, +az1, gx1*pi/180.0f, -gy1*pi/180.0f, -gz1*pi/180.0f,  my1,  -mx1, mz1);
+     mx1 = (float)magCount1[0]*mRes*magCalibration1[0] - magBias1[0];  // get actual magnetometer value, this depends on scale being set
+     my1 = (float)magCount1[1]*mRes*magCalibration1[1] - magBias1[1];  
+     mz1 = (float)magCount1[2]*mRes*magCalibration1[2] - magBias1[2];  
+     mx1 *= magScale1[0];
+     my1 *= magScale1[1];
+     mz1 *= magScale1[2]; 
+     for(uint8_t i = 0; i < 10; i++) { // iterate a fixed number of times per data read cycle
+     Now1 = micros();
+     deltat1 = ((Now1 - lastUpdate1)/1000000.0f); // set integration time by time elapsed since last filter update
+     lastUpdate1 = Now1;
+     MadgwickQuaternionUpdate1(-ax1, +ay1, +az1, gx1*pi/180.0f, -gy1*pi/180.0f, -gz1*pi/180.0f,  my1,  -mx1, mz1);   //Uptade the quaternions for the first IMU
     }
       
-     MPU9250.readMPU9250Data(MPU2, MPU6050Data); // INT cleared on any read
-   
+     MPU9250.readMPU9250Data(MPU2, MPU6050Data); // Same thing fot the second IMU -----------------------------------------------------
     // Now we'll calculate the accleration value into actual g's
      ax2 = (float)MPU6050Data[0]*aRes - accelBias2[0];  // get actual g value, this depends on scale being set
      ay2 = (float)MPU6050Data[1]*aRes - accelBias2[1];   
      az2 = (float)MPU6050Data[2]*aRes - accelBias2[2];  
-
     // Calculate the gyro value into actual degrees per second
      gx2 = (float)MPU6050Data[4]*gRes;  // get actual gyro value, this depends on scale being set
      gy2 = (float)MPU6050Data[5]*gRes;  
-     gz2 = (float)MPU6050Data[6]*gRes; 
-  
+     gz2 = (float)MPU6050Data[6]*gRes;
 //    if( MPU9250.checkNewMagData() == true) { // wait for magnetometer data ready bit to be set
 //      MPU9250.readMagData(MPU2, magCount2);  // Read the x/y/z adc values
-  
     // Calculate the magnetometer values in milliGauss
     // Include factory calibration per data sheet and user environmental corrections
 //      mx2 = (float)magCount2[0]*mRes*magCalibration2[0] - magBias2[0];  // get actual magnetometer value, this depends on scale being set
@@ -263,157 +254,105 @@ void loop()
 //      my2 *= magScale2[1];
 //      mz2 *= magScale2[2]; 
 //    }
-  
     for(uint8_t i = 0; i < 10; i++) { // iterate a fixed number of times per data read cycle
     Now2 = micros();
     deltat2 = ((Now2 - lastUpdate2)/1000000.0f); // set integration time by time elapsed since last filter update
     lastUpdate2 = Now2;
-
-    sum2 += deltat2; // sum for averaging filter update rate
-
-    //Calculo feito com a MPU9250
     //MadgwickAHRSupdateIMU(-ax2, +ay2, +az2, gx2*pi/180.0f, -gy2*pi/180.0f, -gz2*pi/180.0f, Q);
     MadgwickAHRSupdateIMU(gx2*pi/180.0f, -gy2*pi/180.0f, -gz2*pi/180.0f, -ax2, +ay2, +az2, Q, deltat2);
-    //Serial.print(Q[0]);Serial.print(Q[1]);Serial.print(Q[2]);Serial.println(Q[3]);
     }
-    /* end of MPU9250 2 interrupt handling ================================================================                                   
-    ----------------------------------------|DATASET PRINTING|---------------------------------------------
+    
+    /* =====================================================================================================                                 
+    ----------------------------------------|Calculations|--------------------------------------------------
     =======================================================================================================*/
-   //}
-     
     delay(65);
-    if(SerialDebug && buttonstate) {
-    digitalWrite(Gled, HIGH);
-    //if(SerialDebug) {
-      if(!onlyAngles){
-    Serial.print((int)1000*ax1);  
-    Serial.print(", "); Serial.print((int)1000*ay1); 
-    Serial.print(", "); Serial.print((int)1000*az1);
-    Serial.print(", "); Serial.print( gx1, 2); 
-    Serial.print(", "); Serial.print( gy1, 2); 
-    Serial.print(", "); Serial.print( gz1, 2);
-    Serial.print(", "); Serial.print( (int)mx1 ); 
-    Serial.print(", "); Serial.print( (int)my1 ); 
-    Serial.print(", "); Serial.print( (int)mz1 );
-    Serial.print(", "); Serial.print((int)1000*ax2);  
-    Serial.print(", "); Serial.print((int)1000*ay2); 
-    Serial.print(", "); Serial.print((int)1000*az2);
-    Serial.print(", "); Serial.print( gx2, 2); 
-    Serial.print(", "); Serial.print( gy2, 2); 
-    Serial.print(", "); Serial.print( gz2, 2);
-//    Serial.print(", "); Serial.print( (int)mx2 ); 
-//    Serial.print(", "); Serial.print( (int)my2 ); 
-//    Serial.print(", "); Serial.print( (int)mz2 );
-      }
-   } else {digitalWrite(Gled, LOW);}               
-   
+
+    // IMU 1 ------------------------------------------------------
     a12 =   2.0f * (q[1] * q[2] + q[0] * q[3]);
     a22 =   q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3];
     a31 =   2.0f * (q[0] * q[1] + q[2] * q[3]);
     a32 =   2.0f * (q[1] * q[3] - q[0] * q[2]);
     a33 =   q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3];
+ 
     pitch1 = -asinf(a32);
     roll1  = atan2f(a31, a33);
     yaw1   = atan2f(a12, a22);
     pitch1 *= 180.0f / pi;
     yaw1   *= 180.0f / pi; 
-    yaw1   += 21.56f; // Declination at Sobradinho, Brasília at 21 degrees 56 minutes and 23 seconds on 31-01-2022
-    //if(yaw1 < 0) yaw1   += 360.0f; // Ensure yaw stays between 0 and 360
+    yaw1   += 21.56f;                                           // Declination at Sobradinho, Brasília at 21 degrees 56 minutes and 23 seconds on 31-01-2022
+    //if(yaw1 < 0) yaw1   += 360.0f;                            // Ensure yaw stays between 0 and 360
     roll1  *= 180.0f / pi;
-    lin_ax1 = ax1 + a31;
-    lin_ay1 = ay1 + a32;
-    lin_az1 = az1 - a33;
 
-    if(SerialDebug && buttonstate) {
-    //if(SerialDebug) {
-    Serial.print(", ");Serial.print(roll1, 2);
-    Serial.print(", ");Serial.print(pitch1, 2);
-    Serial.print(", ");Serial.print(yaw1, 2);
-
-//    Serial.print("Grav_x, Grav_y, Grav_z: ");
-//    Serial.print(-a31*1000.0f, 2);
-//    Serial.print(", ");
-//    Serial.print(-a32*1000.0f, 2);
-//    Serial.print(", ");
-//    Serial.print(a33*1000.0f, 2);  Serial.println(" mg");
-//    Serial.print("Lin_ax, Lin_ay, Lin_az: ");
-//    Serial.print(lin_ax1*1000.0f, 2);
-//    Serial.print(", ");
-//    Serial.print(lin_ay1*1000.0f, 2);
-//    Serial.print(", ");
-//    Serial.print(lin_az1*1000.0f, 2);  Serial.println(" mg");
-    }
-
+    // IMU 2 ----------------------------------------------------- 
     AA12 =   2.0f * (Q[1] * Q[2] + Q[0] * Q[3]);
     AA22 =   Q[0] * Q[0] + Q[1] * Q[1] - Q[2] * Q[2] - Q[3] * Q[3];
     AA31 =   2.0f * (Q[0] * Q[1] + Q[2] * Q[3]);
     AA32 =   2.0f * (Q[1] * Q[3] - Q[0] * Q[2]);
     AA33 =   Q[0] * Q[0] - Q[1] * Q[1] - Q[2] * Q[2] + Q[3] * Q[3];
+    
     //pitch2 = -asinf(AA32);
     //pitch2 = atan2f(2.0f*Q[0]*Q[3]-2.0f*Q[1]*Q[2], 1.0f-2.0f*Q[0]*Q[0]-2.0f*Q[2]*Q[2]);
-    roll2 = acosf(Q[0]/sqrt(Q[0]*Q[0] + Q[2]*Q[2]))*2.0f;    // +180 because MPU6050 is mounted upside down
-    pitch2  = atan2f(AA31, AA33);                            // -180 because MPU6050 is mounted upside down
+    roll2 = acosf(Q[0]/sqrt(Q[0]*Q[0] + Q[2]*Q[2]))*2.0f;        // +180 because MPU6050 is mounted upside down
+    pitch2  = atan2f(AA31, AA33);                                // -180 because MPU6050 is mounted upside down
     //rolll2 = acosf(Q[0]/sqrt(Q[0]*Q[0] + Q[1]*Q[1]))*2.0f;
     //yaw2   = atan2f(AA12, AA22);
     pitch2 *= 180.0f / pi;
     roll2  *= 180.0f / pi;
     //yaw2   *= 180.0f / pi; 
-    //yaw2   += 21.56f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-    //if(yaw2 < 0) yaw2   += 360.0f; // Ensure yaw stays between 0 and 360
-    if(MPU6050upsidedown){pitch2 += 180.0f; roll2 += 180.0f;}
+    //yaw2   += 21.56f;                                         // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+    //if(yaw2 < 0) yaw2   += 360.0f;                            // Ensure yaw stays between 0 and 360
+    if(MPU6050upsidedown){pitch2 += 180.0f; roll2 += 180.0f;}   // If IMU 2 is upside down, flip the angles
     pitch2 = wrap(pitch2, 180.0f);
     roll2 = wrap(roll2, 180.0f);
     //roll2 = -roll2;
-//    lin_ax2 = ax2 + AA31;
-//    lin_ay2 = ay2 + AA32;
-//    lin_az2 = az2 - AA33;
 
+    float pressure = FSLP.fslpGetPressure(FSL, FD1, FD2, FR0);                // Get raw pressure values [Siemens]
+    if(pressure > 0){pressure = 0.01f*pressure*pressure + 0.5f*pressure+12;}  // Calculate Pressure value in Newtons
+    int pos = FSLP.fslpGetPosition(FSL, FD1, FD2, FR0);                       // Get raw positioning 8 bits
+    float pos_mm = pos*0.018315f;                                             // Convert to mm
 
-    float pressure = FSLP.fslpGetPressure(FSL, FD1, FD2, FR0);
-    if(pressure > 0){pressure = 0.01f*pressure*pressure + 0.5f*pressure+12;}
-    int pos = FSLP.fslpGetPosition(FSL, FD1, FD2, FR0);
-    float pos_mm = pos*0.018315f;
-    if(SerialDebug && buttonstate) {
-    //if(SerialDebug) {
-    //Serial.print("MPU9250 2 Yaw, Pitch, Roll: ");
-    Serial.print(", ");Serial.print(roll2, 2);
-    Serial.print(", ");Serial.print(pitch2, 2);
-    Serial.print(", ");Serial.print(pressure);
-    Serial.print(", ");Serial.print(pos_mm);
-    Serial.print(", ");Serial.print(movment);
-    Serial.print(", ");Serial.println(object);
-
-//    Serial.print("Grav_x, Grav_y, Grav_z: ");
-//    Serial.print(-AA31*1000.0f, 2);
-//    Serial.print(", ");
-//    Serial.print(-AA32*1000.0f, 2);
-//    Serial.print(", ");
-//    Serial.print(AA33*1000.0f, 2);  Serial.println(" mg");
-//    Serial.print("Lin_ax, Lin_ay, Lin_az: ");
-//    Serial.print(lin_ax2*1000.0f, 2);
-//    Serial.print(", ");
-//    Serial.print(lin_ay2*1000.0f, 2);
-//    Serial.print(", ");
-//    Serial.print(lin_az2*1000.0f, 2);  Serial.println(" mg");      
-    }
-
-//} /* end of alarm handling */
-
+    /* =====================================================================================================                                 
+    ----------------------------------------|DATASET PRINTING|---------------------------------------------
+    =======================================================================================================*/
+    
+    if(SerialDebug && buttonstate) {  // If the button is pressed and Serial is active
+      digitalWrite(Gled, HIGH);
+      if(!onlyAngles){
+        Serial.print((int)1000*ax1);                      // IMU 1 acceleration o X axis [m/s]
+        Serial.print(", "); Serial.print((int)1000*ay1);  // IMU 1 acceleration o Y axis [m/s]
+        Serial.print(", "); Serial.print((int)1000*az1);  // IMU 1 acceleration o Z axis [m/s]
+        Serial.print(", "); Serial.print( gx1, 2);        // IMU 1 angular motion o X axis [dg/s]
+        Serial.print(", "); Serial.print( gy1, 2);        // IMU 1 angular motion o Y axis [dg/s]
+        Serial.print(", "); Serial.print( gz1, 2);        // IMU 1 angular motion o Z axis [dg/s]
+        Serial.print(", "); Serial.print( (int)mx1 );     // IMU 1 magnetic field X axis [mG]
+        Serial.print(", "); Serial.print( (int)my1 );     // IMU 1 magnetic field Y axis [mG]
+        Serial.print(", "); Serial.print( (int)mz1 );     // IMU 1 magnetic field Z axis [mG]
+        Serial.print(", "); Serial.print((int)1000*ax2);  // IMU 2 acceleration o X axis [m/s]
+        Serial.print(", "); Serial.print((int)1000*ay2);  // IMU 2 acceleration o X axis [m/s]
+        Serial.print(", "); Serial.print((int)1000*az2);  // IMU 2 acceleration o X axis [m/s]
+        Serial.print(", "); Serial.print( gx2, 2);        // IMU 2 angular motion o X axis [dg/s]
+        Serial.print(", "); Serial.print( gy2, 2);        // IMU 2 angular motion o X axis [dg/s]
+        Serial.print(", "); Serial.print( gz2, 2);        // IMU 2 angular motion o X axis [dg/s]
+  //    Serial.print(", "); Serial.print( (int)mx2 );     // IMU 2 magnetic field X axis [mG] 
+  //    Serial.print(", "); Serial.print( (int)my2 );     // IMU 2 magnetic field X axis [mG] 
+  //    Serial.print(", "); Serial.print( (int)mz2 );     // IMU 2 magnetic field X axis [mG] 
+        Serial.print(", ");Serial.print(roll1, 2);        // IMU 1 angle X axis [degrees]
+        Serial.print(", ");Serial.print(pitch1, 2);       // IMU 1 angle Y axis [degrees]
+        Serial.print(", ");Serial.print(roll2, 2);        // IMU 2 angle X axis [degrees]
+        Serial.print(", ");Serial.print(pitch2, 2);       // IMU 2 angle Y axis [degrees] 
+        Serial.print(", ");Serial.print(yaw1, 2);         // IMU 1 angle Z axis [degrees] - The Z axis (Yaw) is always the same for both IMUs
+        Serial.print(", ");Serial.print(pressure);        // Force of the finger [Newton]
+        Serial.print(", ");Serial.print(pos_mm);          // Positioning of the applied force [mm]
+        Serial.print(", ");Serial.print(movment);         // Type of movment []
+        Serial.print(", ");Serial.println(object);        // The object which is being held
+      }
+   } else {digitalWrite(Gled, LOW);} // If data set printing is finished     
 }
 
 //===================================================================================================================
 //====== Set of useful functions
 //===================================================================================================================
 //
-void myinthandler1()
-{
-  intFlag1 = true;
-}
-
-void myinthandler2()
-{
-  intFlag2 = true;
-}
 
 void MadgwickQuaternionUpdate1(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
         {
