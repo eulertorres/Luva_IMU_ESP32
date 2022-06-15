@@ -3,9 +3,9 @@
 // the sense line and drive line 2 must be connected to pins
 // capable of reading analog voltages.  See the FSLP guide for
 // more information.
-const int fslpSenseLine = 25;
 const int fslpDriveLine1 = 32;
 const int fslpDriveLine2 = 33;
+const int fslpSenseLine = 25;
 const int fslpBotR0 = 26;
 const int button = 5;   // Buton to start calibration
 const int Gled = 2;     // Extra Led to indicate printing
@@ -49,31 +49,21 @@ void loop()
       float pressure;
       int position;
       pressure = fslpGetPressure();
-
       if (pressure == 0){
-          position = 0;} else{
+          position = 0;
+      } else{
           position = fslpGetPosition();  // Raw reading, from 0 to 1023.
-  }
-
+      }
       char report[80];
-      sprintf(report, "pressure: %.5f   position: %5d\n",
+      sprintf(report, "pressure: %.5f Siemens  position: %5d bits \n",
       pressure, position);
       Serial.print(report);
-
-  delay(20);
-    }
+      delay(20);
+  }
    
   if (buttonstate){  
     float pressure; int position;
     str[n] = fslpGetPressure();
-//    if (pressure == 0.0)
-//    {
-//      position = 0;
-//    }
-//    else
-//    {
-//      position = fslpGetPosition();  // Raw reading, from 0 to 1023.
-//    }
     delay(1000);
     i++; n++;
   }

@@ -15,11 +15,11 @@
 #include "FSLP.h"               //FSLP header file, to get te measurements
 
 #define SerialDebug true          // set true to get Serial output for debugging and dataset information
-#define onlyAngles true           // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2)
+#define onlyAngles false           // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2)
 #define calibrationMag9250 false  // Set true to calibrate the MPU920 magnetometer in a new enviorment
-#define MPU6050upsidedown true    // Set true if MPU 6050 is mounted upside down (LED in the botton)
-#define gyro_accel_cal false      // set true to calibrate gyro and accelerometer of both IMUs
-#define factory_test true         // Set true to test the IMU's integrity
+#define MPU6050upsidedown false    // Set true if MPU 6050 is mounted upside down (LED in the botton)
+#define gyro_accel_cal true      // set true to calibrate gyro and accelerometer of both IMUs
+#define factory_test false         // Set true to test the IMU's integrity
 
 char object[] = "Smartphone";     // Set the object to be printed in dataset
 
@@ -47,8 +47,8 @@ float zeta = sqrtf(3.0f / 4.0f) * GyroMeasDrift;    // compute zeta, the other f
 bool wakeup;
 
 // ESP32 GPIOs definitions-------------------------------------------
-const int button = 2;       // Buton to start printing Dataset
-const int Gled = 4;         // Extra Led to indicate printing
+const int button = 15;       // Buton to start printing Dataset
+const int Gled = 2;         // Extra Led to indicate printing
 bool buttonstate = false;   // Dataset printing state
 bool lock = false;          // Avoid multiple entries by the button
 const int FSL = 25;	        // FSLP sense line
@@ -66,7 +66,7 @@ float   SelfTest[6];                    // holds results of gyro and acceleromet
 // These can be measured once and entered here or can be calculated each time the device is powered on ----- IMPORTANT -----------------
 float   gyroBias1[3] = {0.96, -0.21, 0.12}, accelBias1[3] = {0.00299, -0.00916, 0.00952}; //Bias corrections for IMU 1 gyro and accelerometer
 float   gyroBias2[3] = {0.96, -0.21, 0.12}, accelBias2[3] = {0.00299, -0.00916, 0.00952}; //Bias corrections for IMU 2 gyro and accelerometer
-float   magBias1[3] = {-95.96, 296.88, -428.83}, magScale1[3]  = {0.86, 0.98, 1.22}; // Bias corrections for magnetometer
+float   magBias1[3] = {-98.96, 302.88, -350.86}, magScale1[3]  = {0.93, 0.97, 1.11}; // Bias corrections for magnetometer
 float   magBias2[3] = {71.04, 122.43, -36.90}, magScale2[3]  = {1.01, 1.03, 0.96};   // Bias corrections for gyro and accelerometer
 
 float pitch1, yaw1, roll1, pitch2, yaw2, roll2;                   // absolute orientation
@@ -83,7 +83,9 @@ float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             // vector to hold quaternion
 //float lin_ax2, lin_ay2, lin_az2;                   // linear acceleration (acceleration with gravity component subtracted)
 float Q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             // vector to hold quaternion
 
-//MPU9250 MPU9250(); // instantiate MPU9250 class
+//int  intPin1 = 9;
+//MPU9250 MPU9250(intPin1); // instantiate MPU9250 class
+MPU9250 MPU9250;
 FSLP FSLP;
 
 void setup()
@@ -203,11 +205,6 @@ void loop()
      buttonstate = !buttonstate;                                // If it has been pressed and it's not locked. change the state of the button
      lock = true;
    } else if(buttonstate_push == LOW && lock){lock = false;};   // If the button is relesed, unlock to another press.
-
-     if (pressure == 0){                   // If no object is being held, then there is no prresure nor force being applied
-      movment = 0;
-      pos_mm = 0;
-      }else{movment = 1;}
            
      MPU9250.readMPU9250Data(MPU1, MPU9250Data);    // Readings end calculations for the first IMU ------------------------------------
     // Now we'll calculate the accleration value into actual g's
@@ -218,7 +215,7 @@ void loop()
      gx1 = (float)MPU9250Data[4]*gRes;  // get actual gyro value, this depends on scale being set
      gy1 = (float)MPU9250Data[5]*gRes;  
      gz1 = (float)MPU9250Data[6]*gRes; 
-     if( MPU9250.checkNewMagData() == true) {MPU9250.readMagData(MPU1, magCount1);}  // magnetometer data if its available
+     if( MPU9250.checkNewMagData(MPU1) == true) {MPU9250.readMagData(MPU1, magCount1);}  // magnetometer data if its available
     // Calculate the magnetometer values in milliGauss
     // Include factory calibration per data sheet and user environmental corrections
      mx1 = (float)magCount1[0]*mRes*magCalibration1[0] - magBias1[0];  // get actual magnetometer value, this depends on scale being set
@@ -310,7 +307,11 @@ void loop()
     if(pressure > 0){pressure = 0.01f*pressure*pressure + 0.5f*pressure+12;}  // Calculate Pressure value in Newtons
     int pos = FSLP.fslpGetPosition(FSL, FD1, FD2, FR0);                       // Get raw positioning 8 bits
     float pos_mm = pos*0.018315f;                                             // Convert to mm
-
+    if (pressure == 0){                                                       // If no object is being held, then there is no prresure nor force being applied
+      movment = 0;                                                            // The hand is closing
+      pos_mm = 0;                                                             // There is no object
+    }else{movment = 1;}                                                       // The hand closed fully
+    
     /* =====================================================================================================                                 
     ----------------------------------------|DATASET PRINTING|---------------------------------------------
     =======================================================================================================*/
@@ -345,7 +346,13 @@ void loop()
         Serial.print(", ");Serial.print(pos_mm);          // Positioning of the applied force [mm]
         Serial.print(", ");Serial.print(movment);         // Type of movment []
         Serial.print(", ");Serial.println(object);        // The object which is being held
-      }
+      } else{
+        Serial.print(roll1, 2);        // IMU 1 angle X axis [degrees]
+        Serial.print(", ");Serial.print(pitch1, 2);       // IMU 1 angle Y axis [degrees]
+        Serial.print(", ");Serial.print(roll2, 2);        // IMU 2 angle X axis [degrees]
+        Serial.print(", ");Serial.print(pitch2, 2);       // IMU 2 angle Y axis [degrees] 
+        Serial.print(", ");Serial.println(yaw1, 2);         // IMU 1 angle Z axis [degrees] - The Z axis (Yaw) is always the same for both IMUs
+        }
    } else {digitalWrite(Gled, LOW);} // If data set printing is finished     
 }
 
