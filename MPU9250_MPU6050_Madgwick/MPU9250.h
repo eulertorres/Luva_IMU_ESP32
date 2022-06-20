@@ -195,7 +195,7 @@
 class MPU9250
 {
   public: 
-  MPU9250(uint8_t intPin);
+  //MPU9250(uint8_t intPin);
   uint8_t getMPU9250ID(uint8_t MPUnum);
   uint8_t getAK8963CID(uint8_t MPUnum);
   void resetMPU9250(uint8_t MPUnum);
