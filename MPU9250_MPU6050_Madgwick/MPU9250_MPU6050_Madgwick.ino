@@ -1,5 +1,5 @@
-/*============= Cration of a dataset using a sensored glove (1 finger) with MPU6050 and MPU9250===============================*/
-/*  Created by Euler torres to Glove aplication 30/01/2022
+/*============= Cration of a dataset using a sensored glove (5 fingers) with 20 MPU9250===============================*/
+/*  Created by Euler torres to Glove aplication 20/06/2022
  *  Lybrary by Sebastian Madgwick [Madgwick] https://x-io.co.uk/open-source-imu-and-ahrs-algorithms/
  *  
  Reading, Calculation and estimation 2 IMU angles
@@ -13,14 +13,20 @@
 #include "MadgwickAHRS.h"       //Madwick Filter header file, for both IMU
 #include "FSLP.h"               //FSLP header file, to get te measurements
 
-#define SerialDebug true          // set true to get Serial output for debugging and dataset information
-#define onlyAngles true           // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2)
-#define calibrationMag9250 false  // Set true to calibrate the MPU920 magnetometer in a new enviorment
-#define MPU6050upsidedown true    // Set true if MPU 6050 is mounted upside down (LED in the botton)
-#define gyro_accel_cal false      
+#define SerialDebug 		true       // Set true to get Serial output for debugging and dataset information
+#define onlyAngles 			true       // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2, Yall2)
+#define calibrationMag9250 	false	   // Set true to calibrate the MPU920 magnetometer in a new enviorment
+#define selftest_en 		false      // Set true to see if the MPU9250s correponds to the factory integrity
+#define gyro_accel_cal 		false      // Set true to calibrate the biases and scales of each MPU9250
 
+#define button 2       			   // Buton to start printing Dataset
+#define Gled   4         			   // Extra Led to indicate printing
+#define M_A0   17         			   // Digital output for mux selection
+#define M_A1   16         			   // Digital output for mux selection
+#define M_A2   4         			   // Digital output for mux selection
+#define FD1    23                     // FSLP D1 (common for all FSLPs) [Digital OUTPUT]
 
-char object[] = "Smartphone";     // Set the object to be printed in dataset
+char object[] = "Smartphone";          // Set the object to be printed in dataset
 
 // MPU9250 Configuration. Specify sensor full scale
 /* Choices are:
@@ -32,59 +38,64 @@ char object[] = "Smartphone";     // Set the object to be printed in dataset
  *  sampleRate = 0x00 means 1 kHz sample rate for both accel and gyro, 0x04 means 200 Hz, etc.
  */
 uint8_t Gscale = GFS_250DPS, Ascale = AFS_2G, Mscale = MFS_16BITS, Mmode = M_100Hz, sampleRate = 0x04;         
-float aRes, gRes, mRes;      			 	   // scale resolutions per LSB for the sensors
-int16_t MPU9250_1_data[7], MPU9250_2_data[7];  // used to read all 14 bytes at once from both MPU9250 accel/gyro of the finger
+float 	aRes, gRes, mRes;      			 	   // scale resolutions per LSB for the sensors
+int16_t MPU9250_1_data[7], MPU9250_2_data[7];  // used to read all 14 bytes at once from both MPU9250 accel/gyro of the specific finger
 int16_t magCount1[3], magCount2[3];      	   // Stores the 16-bit signed magnetometer sensor output
-float   magCalibration1[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // Factory mag calibration and mag bias of all MPU1s
-float   magCalibration2[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // Factory mag calibration and mag bias of all MPU2s
+float   magCalibration1[15];				   // Factory mag calibration and mag bias of all MPU1s
+float   magCalibration2[15];				   // Factory mag calibration and mag bias of all MPU2s
 float   SelfTest[6];                     	   // holds results of gyro and accelerometer self test
 
-// These can be measured once and entered here or can be calculated each time the device is powered on ----- IMPORTANT -----------------
-float   gyroBias1[3] = {0.96, -0.21, 0.12}, accelBias1[3] = {0.00299, -0.00916, 0.00952}; //Bias corrections for IMU 1 gyro and accelerometer
-float   gyroBias2[3] = {0.96, -0.21, 0.12}, accelBias2[3] = {0.00299, -0.00916, 0.00952}; //Bias corrections for IMU 2 gyro and accelerometer
-float   magBias1[3] = {-95.96, 296.88, -428.83}, magScale1[3]  = {0.86, 0.98, 1.22}; // Bias corrections for magnetometer
-float   magBias2[3] = {71.04, 122.43, -36.90}, magScale2[3]  = {1.01, 1.03, 0.96};   // Bias corrections for gyro and accelerometer
+//------------------------------------------------ IMPORTANT-------------------------------------------------------------------------------------------------------------
+// These can be measured once and entered here or can be calculated each time the device is powered on 
+//Gyro biases for each axis to all 10 MPU9250_1 (proximal)
+float   gyroBias1[15] = {0.96, -0.21, 0.12, 0.96, -0.21, 0.12, 0.96, -0.21, 0.12, 0.96, -0.21, 0.12, 0.96, -0.21, 0.12};
+//Accelerometer biases for each axis to all MPU9250_1 (proximal)
+float 	accelBias1[15] = {0.00299, -0.00916, 0.00952, 0.00299, -0.00916, 0.00952, 0.00299, -0.00916, 0.00952, 0.00299, -0.00916, 0.00952, 0.00299, -0.00916, 0.00952};
+//Gyro biases for each axis to all 10 MPU9250_2 (medium)
+float   gyroBias2[15] = {0.96, -0.21, 0.12, 0.96, -0.21, 0.12, 0.96, -0.21, 0.12, 0.96, -0.21, 0.12, 0.96, -0.21, 0.12};
+//Accelerometer biases for each axis to all MPU9250_2 (medium)
+float	accelBias2[15] = {0.00299, -0.00916, 0.00952, 0.00299, -0.00916, 0.00952, 0.00299, -0.00916, 0.00952, 0.00299, -0.00916, 0.00952, 0.00299, -0.00916, 0.00952};
+//Magnetometer biases for each axis to all MPU9250_1 (proximal)
+float   magBias1[15] = {-95.96, 296.88, -428.83, -95.96, 296.88, -428.83, -95.96, 296.88, -428.83, -95.96, 296.88, -428.83, -95.96, 296.88, -428.83};
+//Magnetometer scales for each axis to all MPU9250_1 (proximal)
+float	magScale1[15]  = {0.86, 0.98, 1.22, 0.86, 0.98, 1.22, 0.86, 0.98, 1.22, 0.86, 0.98, 1.22, 0.86, 0.98, 1.22};
+//Magnetometer biases for each axis to all MPU9250_2 (medium)
+float   magBias2[15] = {-95.96, 296.88, -428.83, -95.96, 296.88, -428.83, -95.96, 296.88, -428.83, -95.96, 296.88, -428.83, -95.96, 296.88, -428.83};
+//Magnetometer scales for each axis to all MPU9250_2 (medium)
+float	magScale2[15]  = {0.86, 0.98, 1.22, 0.86, 0.98, 1.22, 0.86, 0.98, 1.22, 0.86, 0.98, 1.22, 0.86, 0.98, 1.22};
 
-float pitch1[5], yaw1[5], roll1[5], pitch2[5], yaw2[5], roll2[5];                   // absolute orientation
-float a12, a22, a31, a32, a33;                                    // rotation matrix coefficients for Euler angles and gravity components
-float AA12, AA22, AA31, AA32, AA33;                               // rotation matrix coefficients for Euler angles and gravity components
-float deltat1 = 0.0f, sum1 = 0.0f, deltat2 = 0.0f;   // integration interval for both filter schemes
+float pitch1[5], yaw1[5], roll1[5], pitch2[5], yaw2[5], roll2[5]; // absolute orientation
+float a12, a22, a31, a32, a33;                                    // rotation matrix coefficients for Euler angles and gravity components MPU1
+float AA12, AA22, AA31, AA32, AA33;                               // rotation matrix coefficients for Euler angles and gravity components MPU2
+float deltat1 = 0.0f, sum1 = 0.0f, deltat2 = 0.0f;   			  // integration interval for both filter schemes
 uint32_t lastUpdate1 = 0, lastUpdate2 = 0;                        // used to calculate integration interval
 uint32_t Now1 = 0, Now2 = 0;                                      // used to calculate integration interval
 
 float ax1[5], ay1[5], az1[5], gx1[5], gy1[5], gz1[5], mx1[5], my1[5], mz1[5]; // variables to hold latest sensor data values of the MPU_1 for all 5 fingers
 float ax2[5], ay2[5], az2[5], gx2[5], gy2[5], gz2[5], mx2[5], my2[5], mz2[5]; // variables to hold latest sensor data values of the MPU_2 for all 5 fingers
-float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             // vector to hold quaternion of the MPU_1 
-float Q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             // vector to hold quaternion of the MPU_2
+float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             				  // vector to hold quaternion of the MPU_1 
+float Q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             				  // vector to hold quaternion of the MPU_2
 
 // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)======================================================================
-float pi = 3.141592653589793238462643383279502884f;
+float pi = 3.141592653589793238462643383279502884f;	// Contant PI
 float GyroMeasError = pi * (40.0f / 180.0f);        // gyroscope measurement error in rads/s (start at 40 deg/s)
 float GyroMeasDrift = pi * (0.0f  / 180.0f);        // gyroscope measurement drift in rad/s/s (start at 0.0 deg/s/s)
 float beta1 = sqrtf(3.0f / 4.0f) * GyroMeasError;   // compute beta
 float zeta = sqrtf(3.0f / 4.0f) * GyroMeasDrift;    // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
-bool wakeup;
 
 // ESP32 GPIOs definitions and some variables ==========================================
-const int button = 2;       						// Buton to start printing Dataset
-const int Gled = 4;         						// Extra Led to indicate printing
-const int M_A0 = 17;         							// Digital output for mux selection
-const int M_A1 = 16;         							// Digital output for mux selection
-const int M_A2 = 4;         							// Digital output for mux selection
-const int FD1 = 23;                  // FSLP D1 (common for all fingers)
-uint8_t FD2[5], FSL[5], FR0[5];
-uint8_t Finger[5];									// Finger mux selection
-uint8_t Clear_buffer[5];
-float pos_mm[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};	// Position buffer for each finger
-float pressure[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // Pressure buffer for each finger
+uint8_t FD2[5], FSL[5], FR0[5];						// For assigning each FSLP pin to its respective finger.
+uint8_t Finger[5];									// Finger mux selection (Set buffer)
+uint8_t Clear_buffer[5];							// Finger mux selection (Clear buffer)
+float pos_mm[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};	// Position buffer for each finger [mm]
+float pressure[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // Pressure buffer for each finger [Newtons]
 
 // Variables for control ==============================================
-bool newMagData = false;
+bool newMagData = false;	// Incomming data from magnetometers
 bool buttonstate = false;   // Dataset printing state
 bool lock = false;          // Avoid multiple entries by the button
-uint8_t Closed_hand = 0;
-uint8_t countmov = 0;
-uint8_t MUX_i2c = 0;
+uint8_t Closed_hand = 0;	// If the hand is touching the object or not
+gpio_config_t config_IO;    //Variable for ESP32 GPIO configurations
 
 MPU9250 MPU9250; // instantiate MPU9250 class
 FSLP FSLP;	     // Instantiate FSLP class
@@ -93,17 +104,10 @@ void setup()
 {
   Serial.begin(115200);
   delay(1000);
-  Wire.begin(); 					// set master mode, default on SDA/SCL for Ladybug   
+  Wire.begin(); 					// set master mode, default on SDA/SCL   
   Wire.setClock(400000); 			// I2C frequency at 400 kHz
   delay(1000);
   
-  pinMode(button,  INPUT);      	// Button to start printing the measurements
-  pinMode(Gled, OUTPUT);			// LED to indicate printing
-  pinMode(FD1, OUTPUT);
-  pinMode(FD2[0], OUTPUT); pinMode(FD2[1], OUTPUT); pinMode(FD2[2], OUTPUT); pinMode(FD2[3], OUTPUT); pinMode(FD2[4], OUTPUT);
-  pinMode(FSL[0], OUTPUT); pinMode(FSL[1], OUTPUT); pinMode(FSL[2], OUTPUT); pinMode(FSL[3], OUTPUT); pinMode(FSL[4], OUTPUT);
-  pinMode(FR0[0], OUTPUT); pinMode(FR0[1], OUTPUT); pinMode(FR0[2], OUTPUT); pinMode(FR0[3], OUTPUT); pinMode(FR0[4], OUTPUT);
-
   // Finger 1 (Thumb [Dedão])--------------------------------------------------- (000)
   Clear_buffer[0] = (1<<M_A0)|(1<<M_A1)|(1<<M_A2);  // Mask to clear the GPIOs 17, 16 and 4
   Finger[0] = 0;                // Set any GPIO for finger 1
@@ -123,7 +127,7 @@ void setup()
   Finger[2] =  (1<<M_A1);         // Set GPIO 16, for finger 3
   FD2[2] = 27;          // FSLP D2 (Analog INPUT/OUTPUT)
   FSL[2] = 34;          // FSLP Sense Line (Analaog INPUT)
-  FR0[2] = 19;        // Resistor 10 kOhms Digital INPUT/OUPUT
+  FR0[2] = 19;          // Resistor 10 kOhms Digital INPUT/OUPUT
   
   // Finger 4 (Ring [Anelar])--------------------------------------------------- (010)
   Clear_buffer[3] = (1<<M_A0);    // Clear GPIO 17 for finger 4
@@ -139,13 +143,22 @@ void setup()
   FSL[4] = 32;          // FSLP Sense Line (Analaog INPUT)
   FR0[4] = 5;       // Resistor 10 kOhms Digital INPUT/OUPUT
   
+  config_IO.mode = GPIO_MODE_INPUT;
+  config_IO.pin_bit_mask = (1<<FSL[4])|(1<<FSL[3])|(1<<FSL[2])|(1<<FSL[1])|(1<<FSL[0])|(1<<button);
+  gpio_config(&config_IO);
+
+  config_IO.mode = GPIO_MODE_OUPUT;
+  config_IO.pin_bit_mask = (1<<Gled)|(1<<FD1)|(1<<M_A0)|(1<<M_A1)|(1<<M_A2);
+  gpio_config(&config_IO);
+  
   for(int i=0; i<5;i++){			// Do this for each finger
 	  GPIO.out_w1tc = Clear_buffer[i];	// Clear pins to select MUX
 	  GPIO.out_w1ts = Finger[i];		// Set pins to select MUX
-	  Serial.print("Finger number: "); Serial.print(i); Serial.print(" Which is: "); Serial.println(Finger[i]);
-	  vTaskDelay(500/portTICK_PERIOD_MS); // Wait 0.5 seconds
-	  
+	  Serial.print("Finger number: "); Serial.print(i);
+	  vTaskDelay(100/portTICK_PERIOD_MS); // Wait 0.1 seconds
+	  	  
 	  MPU9250.I2Cscan(); 			// should detect MPU9250 at 0x71 
+	  Serial.println(" ");
 	  
 	  /* Configure the MPU9250 */
 	  // Read the WHO_AM_I register, this is a good test of communication
@@ -154,7 +167,8 @@ void setup()
 	  Serial.print("MPU9250_1 "); Serial.print("I AM: "); Serial.print(c, HEX); Serial.print("I SHOULD BE: "); Serial.println(0x71, HEX);
 	  uint8_t d = MPU9250.getMPU9250ID(MPU2);		// MPU2 = address 0x69 | AD0 = 1
 	  Serial.print("MPU9250_2 "); Serial.print("I AM: "); Serial.print(d, HEX); Serial.print("I SHOULD BE: "); Serial.println(0x68, HEX);
-	  delay(1000);
+	  Serial.println(" ");
+	  delay(250);
 	  
 	  if (c == 0x71 && d == 0x71 ) // WHO_AM_I should always be 0x71 for MPU9250, 0x69 for MPU6050 
 	  {  
@@ -162,77 +176,82 @@ void setup()
 		
 		MPU9250.resetMPU9250(MPU1); // start by resetting MPU9250_1
 		MPU9250.resetMPU9250(MPU2); // start by resetting MPU9250_2
+		if(selftest_en){
+			MPU9250.SelfTest(MPU1, SelfTest); // Start by performing self test and reporting values
+			Serial.println("Self Test for MPU9250 #1:");
+			Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
+			Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
+			Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
+			Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
+			Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
+			Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
+			MPU9250.SelfTest(MPU2, SelfTest); // Start by performing self test and reporting values
+			Serial.println("Self Test for MPU9250 #2:");
+			Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
+			Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
+			Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
+			Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
+			Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
+			Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
+			delay(200);
+		}
+		Serial.println(" ");
 		
-		MPU9250.SelfTest(MPU1, SelfTest); // Start by performing self test and reporting values
-		Serial.println("Self Test for MPU9250 #1:");
-		Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
-		Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
-		Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
-		Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
-		Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
-		Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
-		MPU9250.SelfTest(MPU2, SelfTest); // Start by performing self test and reporting values
-		Serial.println("Self Test for MPU9250 #2:");
-		Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
-		Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
-		Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
-		Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
-		Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
-		Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
-		delay(1000);
+		if(gyro_accel_cal){ //If this variable is set, a new calibration will be made to both IMUs
+			Serial.println("Gyro calibration = true");
+			float gyroBias_temp[3], accelBias_temp[3];
+			MPU9250.calibrateMPU9250(MPU1, gyroBias_temp, accelBias_temp); // Calibrate gyro and accelerometers, load biases in bias registers
+			gyroBias1[i*3]=gyroBias_temp[0]; gyroBias1[i*3+1]=gyroBias_temp[1]; gyroBias1[i*3+2]=gyroBias_temp[2];
+			accelBias1[i*3]=accelBias_temp[0]; accelBias1[i*3+1]=accelBias_temp[1]; accelBias1[i*3+2]=accelBias_temp[2]; 			
+			
+			MPU9250.calibrateMPU9250(MPU2, gyroBias_temp, accelBias_temp); // Calibrate gyro and accelerometers, load biases in bias registers
+			gyroBias2[i*3]=gyroBias_temp[0]; gyroBias2[i*3+1]=gyroBias_temp[1]; gyroBias2[i*3+2]=gyroBias_temp[2];
+			accelBias2[i*3]=accelBias_temp[0]; accelBias2[i*3+1]=accelBias_temp[1]; accelBias2[i*3+2]=accelBias_temp[2]; 
+		}
+		delay(200);
+	  
+		  MPU9250.initMPU9250(MPU1, Ascale, Gscale, sampleRate); 
+		  MPU9250.initMPU9250(MPU2, Ascale, Gscale, sampleRate); 
+		  Serial.println("MPU9250_1 e MPU6050_2 Initialized in read mode...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
+		  
+		  // Read the WHO_AM_I register of the magnetometer, this is a good test of communication
+		  byte e = MPU9250.getAK8963CID(MPU1);  // Read WHO_AM_I register for AK8963
+		  Serial.print("Magnetometer AK8963_1 "); Serial.print("I AM: "); Serial.print(e, HEX); Serial.print("I SHOULD BE: "); Serial.println(0x48, HEX);
+		  byte f = MPU9250.getAK8963CID(MPU2);  // Read WHO_AM_I register for AK8963
+		  Serial.print("AK8963 2 "); Serial.print("I AM "); Serial.print(f, HEX); Serial.print("I SHOULD BE: "); Serial.println(0x48, HEX);
+		  delay(1000); 
+		  
+		  // Get magnetometer calibration from AK8963 ROM
+		  float magCalibration_temp[3] = {0, 0, 0};		// Variable to store the recent calibration
+		  MPU9250.initAK8963Slave(MPU1, Mscale, Mmode, magCalibration_temp); Serial.println("AK8963 1 initialized for active data mode...."); // Initialize device 1 for active mode read of magnetometer
+		  Serial.println("Calibration values for mag_1: ");
+		  magCalibration1[i*3] = magCalibration_temp[0];	// Store the calibration values into the buffer for all fingers
+		  magCalibration1[i*3+1] = magCalibration_temp[1];
+		  magCalibration1[3*i+2] = magCalibration_temp[2];
+		  Serial.print("MPU1: X-Axis sensitivity adjustment value for this finger "); Serial.println(magCalibration1[i*3], 2);
+		  Serial.print("MPU1: Y-Axis sensitivity adjustment value for this finger "); Serial.println(magCalibration1[i*3+1], 2);
+		  Serial.print("MPU1: Z-Axis sensitivity adjustment value for this finger "); Serial.println(magCalibration1[i*3+2], 2);
 
-	  if(gyro_accel_cal){ //If this variable is set, a new calibration will be made to both IMUs
-		Serial.println("Gyro calibration = true");
-		MPU9250.calibrateMPU9250(MPU1, gyroBias1, accelBias1); // Calibrate gyro and accelerometers, load biases in bias registers
-		Serial.println("MPU1 accel biases (mg)"); Serial.println(1000.*accelBias1[0]); Serial.println(1000.*accelBias1[1]); Serial.println(1000.*accelBias1[2]);
-		Serial.println("MPU1 gyro biases (dps)"); Serial.println(gyroBias1[0]); Serial.println(gyroBias1[1]); Serial.println(gyroBias1[2]);
-		MPU9250.calibrateMPU9250(MPU2, gyroBias2, accelBias2); // Calibrate gyro and accelerometers, load biases in bias registers
-		Serial.println("MPU2 accel biases (mg)"); Serial.println(1000.*accelBias2[0]); Serial.println(1000.*accelBias2[1]); Serial.println(1000.*accelBias2[2]);
-		Serial.println("MPU2 gyro biases (dps)"); Serial.println(gyroBias2[0]); Serial.println(gyroBias2[1]); Serial.println(gyroBias2[2]);
-	  }
-	  delay(1000);
-	  
-	  MPU9250.initMPU9250(MPU1, Ascale, Gscale, sampleRate); 
-	  MPU9250.initMPU9250(MPU2, Ascale, Gscale, sampleRate); 
-	  Serial.println("MPU9250_1 e MPU6050_2 Initialized in read mode...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
-	  
-	  // Read the WHO_AM_I register of the magnetometer, this is a good test of communication
-	  byte e = MPU9250.getAK8963CID(MPU1);  // Read WHO_AM_I register for AK8963
-	  Serial.print("Magnetometer AK8963_1 "); Serial.print("I AM: "); Serial.print(e, HEX); Serial.print("I SHOULD BE: "); Serial.println(0x48, HEX);
-	  byte f = MPU9250.getAK8963CID(MPU2);  // Read WHO_AM_I register for AK8963
-	  Serial.print("AK8963 2 "); Serial.print("I AM "); Serial.print(f, HEX); Serial.print("I SHOULD BE: "); Serial.println(0x48, HEX);
-	  delay(1000); 
-	  
-	  // Get magnetometer calibration from AK8963 ROM
-	  float magCalibration_temp[3] = {0, 0, 0};		// Variable to store the recent calibration
-	  MPU9250.initAK8963Slave(MPU1, Mscale, Mmode, magCalibration_temp); Serial.println("AK8963 1 initialized for active data mode...."); // Initialize device 1 for active mode read of magnetometer
-	  Serial.println("Calibration values for mag_1: ");
-	  magCalibration1[i*3] = magCalibration_temp[0];	// Store the calibration values into the buffer for all fingers
-	  magCalibration1[i*3+1] = magCalibration_temp[1];
-	  magCalibration1[3*i+2] = magCalibration_temp[2];
-	  Serial.print("MPU1: X-Axis sensitivity adjustment value for this finger "); Serial.println(magCalibration1[i*3], 2);
-	  Serial.print("MPU1: Y-Axis sensitivity adjustment value for this finger "); Serial.println(magCalibration1[i*3+1], 2);
-	  Serial.print("MPU1: Z-Axis sensitivity adjustment value for this finger "); Serial.println(magCalibration1[i*3+2], 2);
-
-	  MPU9250.initAK8963Slave(MPU2, Mscale, Mmode, magCalibration_temp); Serial.println("AK8963 2 initialized for active data mode...."); // Initialize device 2 for active mode read of magnetometer
-	  Serial.println("Calibration values for mag 2: ");
-	  magCalibration2[i*3] = magCalibration_temp[0];
-	  magCalibration2[i*3+1] = magCalibration_temp[1];
-	  magCalibration2[3*i+2] = magCalibration_temp[2];
-	  Serial.print("MPU2: X-Axis sensitivity adjustment value "); Serial.println(magCalibration2[i*3], 2);
-	  Serial.print("MPU2: Y-Axis sensitivity adjustment value "); Serial.println(magCalibration2[i*3+1], 2);
-	  Serial.print("MPU1: Z-Axis sensitivity adjustment value "); Serial.println(magCalibration2[i*3+2], 2);
-	  
-	 // Comment out if using pre-measured, pre-stored offset biases
-	  if(calibrationMag9250){
-		  MPU9250.magcalMPU9250(MPU1, magBias1, magScale1); //Calibração com movimentos em 8
-		  Serial.print("Mag1: COPY THAT (Bias): {"); Serial.print(magBias1[0]); Serial.print(", "); Serial.print(magBias1[1]); Serial.print(", "); Serial.print(magBias1[2]); Serial.println("}");
-		  Serial.print("Mag1: COPY THAT (Scale): {"); Serial.print(magScale1[0]); Serial.print(", "); Serial.print(magScale1[1]); Serial.print(", "); Serial.print(magScale1[2]); Serial.println("}");
-		  MPU9250.magcalMPU9250(MPU2, magBias2, magScale2);
-		  Serial.println("Mag2: COPY THAT (Bias): {"); Serial.print(magBias2[0]); Serial.print(", "); Serial.print(magBias2[1]); Serial.print(", "); Serial.print(magBias2[2]); Serial.println("}"); 
-		  Serial.println("Mag2: COPY THAT (Scale): {"); Serial.print(magScale2[0]); Serial.print(", "); Serial.print(magScale2[1]); Serial.print(", "); Serial.print(magScale2[2]); Serial.println("}"); 
-	  } 
-	  delay(200); // add delay to see results before serial spew of data
+		  MPU9250.initAK8963Slave(MPU2, Mscale, Mmode, magCalibration_temp); Serial.println("AK8963 2 initialized for active data mode...."); // Initialize device 2 for active mode read of magnetometer
+		  Serial.println("Calibration values for mag 2: ");
+		  magCalibration2[i*3] = magCalibration_temp[0];
+		  magCalibration2[i*3+1] = magCalibration_temp[1];
+		  magCalibration2[3*i+2] = magCalibration_temp[2];
+		  Serial.print("MPU2: X-Axis sensitivity adjustment value "); Serial.println(magCalibration2[i*3], 2);
+		  Serial.print("MPU2: Y-Axis sensitivity adjustment value "); Serial.println(magCalibration2[i*3+1], 2);
+		  Serial.print("MPU1: Z-Axis sensitivity adjustment value "); Serial.println(magCalibration2[i*3+2], 2);
+		  
+		 // Comment out if using pre-measured, pre-stored offset biases
+		  if(calibrationMag9250){
+			  float magBias_temp[3],magScale_temp[3];
+			  MPU9250.magcalMPU9250(MPU1, magBias_temp, magScale_temp); //Calibração com movimentos em 8
+			  magBias1[i*3]=magBias_temp[0]; magBias1[i*3+1]=magBias_temp[1]; magBias1[i*3+2]=magBias_temp[2];
+			  magScale1[i*3]=magScale_temp[0]; magScale1[i*3+1]=magScale_temp[1]; magScale1[i*3+2]=magScale_temp[2];
+			  MPU9250.magcalMPU9250(MPU2, magBias_temp, magScale_temp);
+			  magBias2[i*3]=magBias_temp[0]; magBias2[i*3+1]=magBias_temp[1]; magBias2[i*3+2]=magBias_temp[2];
+			  magScale2[i*3]=magScale_temp[0]; magScale2[i*3+1]=magScale_temp[1]; magScale2[i*3+2]=magScale_temp[2];
+		  } 
+		  delay(200); // add delay to see results before serial spew of data
 	  }
 	  else
 	  {
@@ -247,7 +266,45 @@ void setup()
 	aRes = MPU9250.getAres(Ascale);		// Accelerometer scale
 	gRes = MPU9250.getGres(Gscale);		// Gyroscope scale
 	mRes = MPU9250.getMres(Mscale);		// Magnetometer scale
-
+	
+	if(calibrationMag9250){
+		Serial.print("Mag1: COPY THAT (Bias): {")
+		for(i=0; i<14; i++){
+		  Serial.print(magBias1[i]); Serial.print(", ");
+		} Serial.print(magBias1[14]); Serial.println("}");
+		Serial.print("Mag1: COPY THAT (Scale): {")
+		for(i=0; i<14; i++){
+		  Serial.print(magScale1[i]); Serial.print(", ");
+		} Serial.print(magScale1[14]); Serial.println("}");
+		Serial.print("Mag2: COPY THAT (Bias): {")
+		for(i=0; i<14; i++){
+		  Serial.print(magBias2[i]); Serial.print(", ");
+		} Serial.print(magBias2[14]); Serial.println("}");
+		Serial.print("Mag2: COPY THAT (Scale): {")
+		for(i=0; i<14; i++){
+		  Serial.print(magScale2[i]); Serial.print(", ");
+		} Serial.print(magScale2[14]); Serial.println("}");
+	}
+	
+	if(gyro_accel_cal){
+		Serial.print("MPU1: COPY THAT (Gyro_bias) [dps]: {")
+		for(i=0; i<14; i++){
+		  Serial.print(gyroBias1[i]); Serial.print(", ");
+		} Serial.print(gyroBias1[14]); Serial.println("}");
+		Serial.print("MPU1: COPY THAT (Accel_bias) [mg]: {")
+		for(i=0; i<14; i++){
+		  Serial.print(1000*accelBias1[i]); Serial.print(", ");
+		} Serial.print(1000*accelBias1[14]); Serial.println("}");
+		Serial.print("MPU2: COPY THAT (Gyro_bias) [dps]: {")
+		for(i=0; i<14; i++){
+		  Serial.print(gyroBias2[i]); Serial.print(", ");
+		} Serial.print(gyroBias2[14]); Serial.println("}");
+		Serial.print("MPU2: COPY THAT (Accel_bias) [mg]: {")
+		for(i=0; i<14; i++){
+		  Serial.print(1000*accelBias2[i]); Serial.print(", ");
+		} Serial.print(1000*accelBias2[14]); Serial.println("}");
+	}
+	
 	Serial.println("----------------| Clean the Serial information and press the glove button to start the dataset |--------------------------");
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -272,9 +329,9 @@ void loop()
 		
 		MPU9250.readMPU9250Data(MPU1, MPU9250_1_data); 		// Read the first MPU data
 		// Now we'll calculate the accleration value into actual g's
-		 ax1[iii] = (float)MPU9250_1_data[0]*aRes - accelBias1[0];  // get actual g value, this depends on scale being set
-		 ay1[iii] = (float)MPU9250_1_data[1]*aRes - accelBias1[1];   
-		 az1[iii] = (float)MPU9250_1_data[2]*aRes - accelBias1[2];  
+		 ax1[iii] = (float)MPU9250_1_data[0]*aRes - accelBias1[iii*3];  // get actual g value, this depends on scale being set
+		 ay1[iii] = (float)MPU9250_1_data[1]*aRes - accelBias1[iii*3+1];   
+		 az1[iii] = (float)MPU9250_1_data[2]*aRes - accelBias1[iii*3+2];  
 		// Calculate the gyro value into actual degrees per second
 		 gx1[iii] = (float)MPU9250_1_data[4]*gRes;  // get actual gyro value, this depends on scale being set
 		 gy1[iii] = (float)MPU9250_1_data[5]*gRes;  
@@ -284,17 +341,17 @@ void loop()
 		}
 		// Calculate the magnetometer values in milliGauss
 		// Include factory calibration per data sheet and user environmental corrections
-		mx1[iii] = (float)magCount1[0]*mRes*magCalibration1[iii*3] - magBias1[0];  // get actual magnetometer value, this depends on scale being set
-		my1[iii] = (float)magCount1[1]*mRes*magCalibration1[iii*3+1] - magBias1[1];  
-		mz1[iii] = (float)magCount1[2]*mRes*magCalibration1[iii*3+2] - magBias1[2];  
-		mx1[iii] *= magScale1[0];
-		my1[iii] *= magScale1[1];
-		mz1[iii] *= magScale1[2];   
+		mx1[iii] = (float)magCount1[0]*mRes*magCalibration1[iii*3] - magBias1[iii*3];  // get actual magnetometer value, this depends on scale being set
+		my1[iii] = (float)magCount1[1]*mRes*magCalibration1[iii*3+1] - magBias1[iii*3+1];  
+		mz1[iii] = (float)magCount1[2]*mRes*magCalibration1[iii*3+2] - magBias1[iii*3+2];  
+		mx1[iii] *= magScale1[iii*3];
+		my1[iii] *= magScale1[iii*3+1];
+		mz1[iii] *= magScale1[iii*3+2];   
 		for(uint8_t i = 0; i < 10; i++) { // iterate a fixed number of times per data read cycle
-		Now1 = micros();
-		deltat1 = ((Now1 - lastUpdate1)/1000000.0f); // set integration time by time elapsed since last filter update
-		lastUpdate1 = Now1;
-		MadgwickQuaternionUpdate1(-ax1[iii], +ay1[iii], +az1[iii], gx1[iii]*pi/180.0f, -gy1[iii]*pi/180.0f, -gz1[iii]*pi/180.0f,  my1[iii],  -mx1[iii], mz1[iii]);
+			Now1 = micros();
+			deltat1 = ((Now1 - lastUpdate1)/1000000.0f); // set integration time by time elapsed since last filter update
+			lastUpdate1 = Now1;
+			MadgwickQuaternionUpdate1(-ax1[iii], +ay1[iii], +az1[iii], gx1[iii]*pi/180.0f, -gy1[iii]*pi/180.0f, -gz1[iii]*pi/180.0f,  my1[iii],  -mx1[iii], mz1[iii]);
 		}
 		a12 =   2.0f * (q[1] * q[2] + q[0] * q[3]);
 		a22 =   q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3];
@@ -312,23 +369,23 @@ void loop()
 		  
 		MPU9250.readMPU9250Data(MPU2, MPU9250_2_data); // Read the data and store in MPU9250_2_data   
 		// Now we'll calculate the accleration value into actual g's
-		ax2[iii] = (float)MPU9250_2_data[0]*aRes - accelBias2[0];  // get actual g value, this depends on scale being set
-		ay2[iii] = (float)MPU9250_2_data[1]*aRes - accelBias2[1];   
-		az2[iii] = (float)MPU9250_2_data[2]*aRes - accelBias2[2];  
+		ax2[iii] = (float)MPU9250_2_data[0]*aRes - accelBias2[iii*3];  // get actual g value, this depends on scale being set
+		ay2[iii] = (float)MPU9250_2_data[1]*aRes - accelBias2[iii*3+1];   
+		az2[iii] = (float)MPU9250_2_data[2]*aRes - accelBias2[iii*3+2];  
 		// Calculate the gyro value into actual degrees per second
-		gx2[iii] = (float)MPU9250_2_data[4]*gRes - gyroBias2[0];  // get actual gyro value, this depends on scale being set
-		gy2[iii] = (float)MPU9250_2_data[5]*gRes - gyroBias2[1];  
-		gz2[iii] = (float)MPU9250_2_data[6]*gRes - gyroBias2[2]; 
+		gx2[iii] = (float)MPU9250_2_data[4]*gRes - gyroBias2[iii*3];  // get actual gyro value, this depends on scale being set
+		gy2[iii] = (float)MPU9250_2_data[5]*gRes - gyroBias2[iii*3+1];  
+		gz2[iii] = (float)MPU9250_2_data[6]*gRes - gyroBias2[iii*3+2]; 
 		if( MPU9250.checkNewMagData(MPU2) == true) { // wait for magnetometer data ready bit to be set
 		MPU9250.readMagData(MPU2, magCount2);}  // Read the x/y/z adc values
 		// Calculate the magnetometer values in milliGauss
 		// Include factory calibration per data sheet and user environmental corrections
-		mx2[iii] = (float)magCount2[0]*mRes*magCalibration2[0] - magBias2[0];  // get actual magnetometer value, this depends on scale being set
-	  my2[iii] = (float)magCount2[1]*mRes*magCalibration2[1] - magBias2[1];  
-    mz2[iii] = (float)magCount2[2]*mRes*magCalibration2[2] - magBias2[2];  
-    mx2[iii] *= magScale2[0];
-	  my2[iii] *= magScale2[1];
-	  mz2[iii] *= magScale2[2];
+		mx2[iii] = (float)magCount2[0]*mRes*magCalibration2[0] - magBias2[iii*3];  // get actual magnetometer value, this depends on scale being set
+	  my2[iii] = (float)magCount2[1]*mRes*magCalibration2[1] - magBias2[iii*3+1];  
+    mz2[iii] = (float)magCount2[2]*mRes*magCalibration2[2] - magBias2[iii*3+2];  
+    mx2[iii] *= magScale2[iii*3];
+	  my2[iii] *= magScale2[iii*3+1];
+	  mz2[iii] *= magScale2[iii*3+2];
 		for(uint8_t i = 0; i < 10; i++) { // iterate a fixed number of times per data read cycle
 		Now2 = micros();
 		deltat2 = ((Now2 - lastUpdate2)/1000000.0f); // set integration time by time elapsed since last filter update

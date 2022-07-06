@@ -3,10 +3,6 @@
 int FSLP::fslpGetPosition(uint8_t fslpSenseLine, uint8_t fslpDriveLine1, uint8_t fslpDriveLine2, uint8_t fslpBotR0)
 {
   // Step 1 - Clear the charge on the sensor.
-  pinMode(fslpSenseLine, OUTPUT);
-  digitalWrite(fslpSenseLine, LOW);
-
-  pinMode(fslpDriveLine1, OUTPUT);
   digitalWrite(fslpDriveLine1, LOW);
 
   pinMode(fslpDriveLine2, OUTPUT);
@@ -30,7 +26,6 @@ int FSLP::fslpGetPosition(uint8_t fslpSenseLine, uint8_t fslpDriveLine1, uint8_t
 float FSLP::fslpGetPressure(uint8_t fslpSenseLine, uint8_t fslpDriveLine1, uint8_t fslpDriveLine2, uint8_t fslpBotR0)
 {
   // Step 1 - Set up the appropriate drive line voltages.
-  pinMode(fslpDriveLine1, OUTPUT);
   digitalWrite(fslpDriveLine1, HIGH);
 
   pinMode(fslpBotR0, OUTPUT);
