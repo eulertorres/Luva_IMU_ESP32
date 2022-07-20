@@ -226,9 +226,9 @@ bool MPU9250::checkNewMagData(uint8_t MPUnum)
 //  test = (readByte(AK8963_ADDRESS, AK8963_ST1) & 0x01);
   writeByte(MPUnum, I2C_SLV0_ADDR, AK8963_ADDRESS | 0x80);     // Set the I2C slave address of AK8963 and set for read.
   writeByte(MPUnum, I2C_SLV0_REG, AK8963_ST1);                 // I2C slave 0 register address from where to begin data transfer
-  writeByte(MPUnum, I2C_SLV0_CTRL, 0x81);                     // Enable I2C and transfer 1 byte
+  writeByte(MPUnum, I2C_SLV0_CTRL, 0x81);                      // Enable I2C and transfer 1 byte
   delay(2);
-  test = (readByte(MPUnum, EXT_SENS_DATA_00) & 0x01); // Check data ready status byte
+  test = (readByte(MPUnum, EXT_SENS_DATA_00) & 0x01); 		  // Check data ready status byte
   return test;
 }
 
