@@ -7,24 +7,34 @@
   Estimation of force of the grip applied by each finger using FSLP (Force Sensing Linear Potentiometer)
   Estimation of the position of the object using FSLP (Force Sensing Linear Potentiometer)
 */
- 
-#include "Wire.h"               //Biblioteca para comunicação I²C
-#include "MPU9250.h"            //Header file wich includes all IMU communication
-#include "MadgwickAHRS.h"       //Madwick Filter header file, for both IMU
-#include "FSLP.h"               //FSLP header file, to get te measurements
 
-#define SerialDebug 		    true     // Set true to get Serial output for debugging and dataset information
-#define onlyAngles 			    true     // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2, Yall2)
-#define calibrationMag9250 	false	   // Set true to calibrate the MPU920 magnetometer in a new enviorment
-#define selftest_en 		    false     // Set true to see if the MPU9250s correponds to the factory integrity
-#define gyro_accel_cal 		  true     // Set true to calibrate the biases and scales of each MPU9250
+#include <SPI.h>                 // SPI communication library (not used)
+#include "Wire.h"                // I²C communication library
+#include "MPU9250.h"             // Header file wich includes all IMU communication
+#include "MadgwickAHRS.h"        // Madwick Filter header file, for both IMU
+#include "FSLP.h"                // FSLP header file, to get te measurements
+#include <Adafruit_GFX.h>        // Adafruit library for OLED displays
+#include <Adafruit_SSD1306.h>    // SSD1306 Display library
+
+#define SerialDebug true         // Set true to get Serial output for debugging and dataset printing
+#define onlyAngles  true         // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2, Yall2)
 
 #define button 15       			   // Buton to start printing Dataset
 #define Gled   2         			   // Extra Led to indicate printing
-#define M_A0   17         			 // Digital output for mux selection
-#define M_A1   16         			 // Digital output for mux selection
-#define M_A2   4         			   // Digital output for mux selection
-#define FD1    23                     // FSLP D1 (common for all FSLPs) [Digital OUTPUT]
+#define M_A0   17         			 // Digital output for mux address selection (not used)
+#define M_A1   16         			 // Digital output for mux address selection (not used)
+#define M_A2   4         			   // Digital output for mux address selection (not used)
+#define FD1    23                // FSLP D1 (common for all FSLPs) [Digital OUTPUT]
+
+#define SCREEN_WIDTH 128         // OLED display width, in pixels
+#define SCREEN_HEIGHT 64         // OLED display height, in pixels
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET -1            // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+#define DEBOUNCETIME 10          // Maximum time for button bounce (ms)
+#define confirmTime  2000        // Maximum time for confirm a choice
 
 #define TCA_addr 0x70         
 
@@ -40,12 +50,16 @@ char object[] = "Smartphone";          // Set the object to be printed in datase
  *  sampleRate = 0x00 means 1 kHz sample rate for both accel and gyro, 0x04 means 200 Hz, etc.
  */
 uint8_t Gscale = GFS_250DPS, Ascale = AFS_2G, Mscale = MFS_16BITS, Mmode = M_100Hz, sampleRate = 0x04;         
-float 	aRes, gRes, mRes;      			 	   // scale resolutions per LSB for the sensors
-int16_t MPU9250_1_data[7], MPU9250_2_data[7];  // used to read all 14 bytes at once from both MPU9250 accel/gyro of the specific finger
-int16_t magCount1[3], magCount2[3];      	   // Stores the 16-bit signed magnetometer sensor output
-float   magCalibration1[15];				   // Factory mag calibration and mag bias of all MPU1s
-float   magCalibration2[15];				   // Factory mag calibration and mag bias of all MPU2s
-float   SelfTest[6];                     	   // holds results of gyro and accelerometer self test
+float 	aRes, gRes, mRes;      			 	        // scale resolutions per LSB for the sensors
+int16_t MPU9250_1_data[7], MPU9250_2_data[7]; // used to read all 14 bytes at once from both MPU9250 accel/gyro of the specific finger
+int16_t magCount1[3], magCount2[3];      	    // Stores the 16-bit signed magnetometer sensor output
+float   magCalibration1[15];                  // Factory mag calibration and mag bias of all MPU1s
+float   magCalibration2[15];                  // Factory mag calibration and mag bias of all MPU2s
+float   SelfTest[6];                     	    // holds results of gyro and accelerometer self test
+
+bool calibrationMag9250 = true;               // Set true to calibrate the MPU920 magnetometer in a new enviorment
+bool selftest_en        = true;               // Set true to see if the MPU9250s correponds to the factory integrity
+bool gyro_accel_cal     = true;               // Set true to calibrate the biases and scales of each MPU9250
 
 //------------------------------------------------ IMPORTANT-------------------------------------------------------------------------------------------------------------
 // These can be measured once and entered here or can be calculated each time the device is powered on 
@@ -82,8 +96,8 @@ uint32_t Now1 = 0, Now2 = 0;                                      // used to cal
 
 float ax1[5], ay1[5], az1[5], gx1[5], gy1[5], gz1[5], mx1[5], my1[5], mz1[5]; // variables to hold latest sensor data values of the MPU_1 for all 5 fingers
 float ax2[5], ay2[5], az2[5], gx2[5], gy2[5], gz2[5], mx2[5], my2[5], mz2[5]; // variables to hold latest sensor data values of the MPU_2 for all 5 fingers
-float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             				  // vector to hold quaternion of the MPU_1 
-float Q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             				  // vector to hold quaternion of the MPU_2
+float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             				                    // vector to hold quaternion of the MPU_1 
+float Q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             				                    // vector to hold quaternion of the MPU_2
 
 // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)======================================================================
 float pi = 3.141592653589793238462643383279502884f;	// Contant PI
@@ -93,21 +107,39 @@ float beta1 = sqrtf(3.0f / 4.0f) * GyroMeasError;   // compute beta
 float zeta = sqrtf(3.0f / 4.0f) * GyroMeasDrift;    // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
 
 // ESP32 GPIOs definitions and some variables ==========================================
-uint8_t FD2[5], FSL[5], FR0[5];						// For assigning each FSLP pin to its respective finger.
-uint8_t Finger[5];									      // Finger mux selection (Set buffer)
-uint8_t Clear_buffer[5];							    // Finger mux selection (Clear buffer)
-float pos_mm[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};	// Position buffer for each finger [mm]
+uint8_t FD2[5], FSL[5], FR0[5];						          // For assigning each FSLP pin to its respective finger.
+uint8_t Finger[5];									                // Finger mux selection (Set buffer)
+uint8_t Clear_buffer[5];							              // Finger mux selection (Clear buffer)
+float pos_mm[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};	  // Position buffer for each finger [mm]
 float pressure[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // Pressure buffer for each finger [Newtons]
 
 // Variables for control ==============================================
-bool newMagData = false;	  // Incomming data from magnetometers
-bool buttonstate = false;   // Dataset printing state
-bool lock = false;          // Avoid multiple entries by the button
-uint8_t Closed_hand = 0;	  // If the hand is touching the object or not
-gpio_config_t config_IO;    // Variable for ESP32 GPIO configurations
+bool newMagData = false;	                  // Incomming data from magnetometers
+bool buttonstate = false;                   // Dataset printing state
+bool lock = false;                          // Avoid multiple entries by the button
+uint8_t Closed_hand = 0;	                  // If the hand is touching the object or not
+gpio_config_t config_IO;                    // Variable for ESP32 GPIO configurations
+volatile int numberOfButtonInterrupts = 0;  // Number of interrupts detected
+volatile bool lastState;                    // Last state when the button was pressed
+volatile uint32_t debounceTimeout = 0;      // Store debounce time
+uint32_t saveDebounceTimeout;               // Time when the bounce stopped
+bool saveLastState;                         // 
+int save;                                   // 
+bool sel = true;                            // Selection of the user menu
+bool currentState = false;                  // If the button is currently pressed or not (after debounce)
+
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 MPU9250 MPU9250; // instantiate MPU9250 class
 FSLP FSLP;	     // Instantiate FSLP class
+
+void IRAM_ATTR handleButtonInterrupt() {
+    portENTER_CRITICAL_ISR(&mux); 
+      numberOfButtonInterrupts++;                 // Increasse the nu
+      lastState = digitalRead(button);  
+      debounceTimeout = xTaskGetTickCount();      //version of millis() that works from interrupt
+    portEXIT_CRITICAL_ISR(&mux);
+}
 
 void setup()
 {
@@ -116,7 +148,28 @@ void setup()
   Wire.begin(); 					    // set master mode, default on SDA/SCL   
   Wire.setClock(400000); 			// I2C frequency at 400 kHz
   delay(1000);
- 
+
+  attachInterrupt(digitalPinToInterrupt(button), handleButtonInterrupt, CHANGE);   // Will interrupt the program in every change (incluiding the bounce)
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+
+  // Configuration menu, where the user needs to confirm which parameters will be calibrated
+  display.clearDisplay();
+  selftest_en = choose(" INTEGRIDADE DO CHIP");
+  digitalWrite(Gled, HIGH);    // Turn on the LED
+  delay(2000);
+  digitalWrite(Gled, LOW);     // Turn off the LED
+  selftest_en = choose("     GIROSCOPIO E         ACELEROMETRO");
+  digitalWrite(Gled, HIGH);    // Turn on the LED
+  delay(2000);
+  digitalWrite(Gled, LOW);     // Turn off the LED  
+  selftest_en = choose("     MAGNETOMETRO");
+  digitalWrite(Gled, HIGH);    // Turn on the LED
+  delay(2000);
+  digitalWrite(Gled, LOW);     // Turn off the LED
+  
   // Finger 1 (Thumb [Dedão])--------------------------------------------------- (000)
   Finger[0] = 0;              // Select the finger via i2c
   FD2[0] = 25;                // FSLP D2 (Analog INPUT/OUTPUT)
@@ -157,17 +210,18 @@ void setup()
   config_IO.pin_bit_mask = (1<<Gled)|(1<<FD1)|(1<<M_A0)|(1<<M_A1)|(1<<M_A2);
   gpio_config(&config_IO);
 
-  GPIO.out_w1tc = 0;  // Clear pins to select MUX (Set TCA address as 0x70)
+  GPIO.out_w1tc = 0;              // Clear pins to select MUX (Set TCA address as 0x70)
 
-  TCAscan();
+  TCAscan();                      // Show every device coneccted to the TCA board
   
-  for(int i=0; i<5;i++){			      // Do this for each finger
+  for(int i=0; i<5;i++){			    // Do this for each finger
 	  MPU_select(Finger[i]);			  // Send selection via i2c to 0x70 address
 	  Serial.println("-----------------------------------------------------------------------------\n");
 	  Serial.print("Finger number: "); Serial.println(i);
+    drawcalib_config("Dedo numero ", "Configuracao das IMUs", false);
 	  vTaskDelay(100/portTICK_PERIOD_MS); // Wait 0.1 seconds
 	  Serial.println(" ");	  
-	  MPU9250.I2Cscan(); 			// should detect both MPU9250 at 0x75 and its magnetometers
+	  MPU9250.I2Cscan(); 			      // should detect both MPU9250 at 0x75 and its magnetometers
 	  Serial.println(" ");
 	  
 	  /* Configure the MPU9250 */
@@ -184,10 +238,10 @@ void setup()
 	  {  
 		Serial.println("MPU9250_1 and MPU_9250_2 are online...");
 		
-		MPU9250.resetMPU9250(MPU1); // start by resetting MPU9250_1
-		MPU9250.resetMPU9250(MPU2); // start by resetting MPU9250_2
+		MPU9250.resetMPU9250(MPU1);               // start by resetting MPU9250_1
+		MPU9250.resetMPU9250(MPU2);               // start by resetting MPU9250_2
 		if(selftest_en){
-			MPU9250.SelfTest(MPU1, SelfTest); // Start by performing self test and reporting values
+			MPU9250.SelfTest(MPU1, SelfTest);       // Start by performing self test and reporting values
 			Serial.println("Self Test for MPU9250 #1:");
 			Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
 			Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
@@ -195,7 +249,7 @@ void setup()
 			Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
 			Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
 			Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
-			MPU9250.SelfTest(MPU2, SelfTest); // Start by performing self test and reporting values
+			MPU9250.SelfTest(MPU2, SelfTest);       // Start by performing self test and reporting values
 			Serial.println("Self Test for MPU9250 #2:");
 			Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
 			Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
@@ -207,8 +261,9 @@ void setup()
 		}
 		Serial.println(" ");
 		
-		if(gyro_accel_cal){ //If this variable is set, a new calibration will be made to both IMUs
+		if(gyro_accel_cal){                       //If this variable is set, a new calibration will be made to both IMUs
 			Serial.println("Gyro calibration = true");
+      drawcalib_config("ACELEROMETRO E GIROSCOPIO", "Calibracao dos dedos", false);
 			float gyroBias_temp[3], accelBias_temp[3];
 			MPU9250.calibrateMPU9250(MPU1, gyroBias_temp, accelBias_temp); // Calibrate gyro and accelerometers, load biases in bias registers
 			gyroBias1[i*3]=gyroBias_temp[0]; gyroBias1[i*3+1]=gyroBias_temp[1]; gyroBias1[i*3+2]=gyroBias_temp[2];
@@ -253,6 +308,7 @@ void setup()
 		  
 		 // Comment out if using pre-measured, pre-stored offset biases
 		  if(calibrationMag9250){
+        drawcalib_config("      MAGNETOMETRO", "Calibracao dos dedos", false);
 			  float magBias_temp[3],magScale_temp[3];
 			  MPU9250.magcalMPU9250(MPU1, magBias_temp, magScale_temp); //Calibração com movimentos em 8
 			  magBias1[i*3]=magBias_temp[0]; magBias1[i*3+1]=magBias_temp[1]; magBias1[i*3+2]=magBias_temp[2];
@@ -322,11 +378,23 @@ void loop()
 {  
    
    // Check the button state -----------------------------------------------------------------------------
-   int buttonstate_push = digitalRead(button);					// If the button pull-down is pressed
-   if(buttonstate_push == HIGH && !lock){						// If it's set and not locked
-     buttonstate = !buttonstate;								// Change the state
-     lock = true;											    // Lock, to avoid multiple changes
-   } else if(buttonstate_push == LOW && lock){lock = false;};	// Only unlock after releasing the button
+    checkbutton();
+
+    if( (millis() - saveDebounceTimeout) > DEBOUNCETIME && (save != 0) )
+    {
+           if(!currentState) {              
+              buttonstate = !buttonstate;
+            }
+            //Serial.printf("Button Interrupt Triggered %d times, current State=%u, time since last trigger %dms\n", save, currentState, millis() - saveDebounceTimeout);
+            portENTER_CRITICAL_ISR(&mux);  //início da seção crítica
+              numberOfButtonInterrupts = 0; // reconhece que o botão foi pressionado e reseta o contador de interrupção //acknowledge keypress and reset interrupt counter
+            portEXIT_CRITICAL_ISR(&mux); //fim da seção crítica
+    }
+   //int buttonstate_push = digitalRead(button);					// If the button pull-down is pressed
+   //if(buttonstate_push == HIGH && !lock){						// If it's set and not locked
+     //buttonstate = !buttonstate;								// Change the state
+     //lock = true;											    // Lock, to avoid multiple changes
+   //} else if(buttonstate_push == LOW && lock){lock = false;};	// Only unlock after releasing the button
 
      if (pressure[0] == 0 && pressure[1] == 0 && pressure[2] == 0 && pressure[3] == 0 && pressure[4] == 0){ // If there's no pressure in any finger
       Closed_hand = 0;											// Closing the hand
@@ -496,6 +564,75 @@ void TCAscan(){
     }
   }
   Serial.println("\ndone");
+}
+
+void drawcalib_config(char msg[], char title[], bool options){
+  display.clearDisplay();
+
+  display.setTextSize(1);      // Normal 1:1 pixel scale
+  display.setTextColor(WHITE); // Draw white text
+  display.setCursor(0, 0);     // Start at top-left corner
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+  display.write(title);
+  
+  display.setCursor(0,19);
+  display.write(msg);
+  
+  if(options){
+    display.setTextSize(2);      // Normal 1:1 pixel scale
+    display.setCursor(20,45);
+    display.write("SIM");
+    display.setCursor(84,45);
+    display.write("NAO");
+  }
+}
+
+void checkbutton(){
+    portENTER_CRITICAL_ISR(&mux); // início da seção crítica
+      save  = numberOfButtonInterrupts;
+      saveDebounceTimeout = debounceTimeout;
+      saveLastState  = lastState;
+    portEXIT_CRITICAL_ISR(&mux); // fim da seção crítica
+
+    currentState = digitalRead(button); //recupera o estado atual do botão
+
+    //Update debounce time if the button has change state
+    if(currentState != saveLastState)
+    {
+      saveDebounceTimeout = millis();
+    }  
+}
+
+bool choose(char msg2[]){
+  for(;;){
+    checkbutton();
+
+    //se o tempo passado foi maior que o configurado para o debounce e o número de interrupções ocorridas é maior que ZERO (ou seja, ocorreu alguma), realiza os procedimentos
+    if( (millis() - saveDebounceTimeout) > DEBOUNCETIME && (save != 0) )
+    {
+           if(currentState) {              
+              sel = !sel;
+            }
+            //Serial.printf("Button Interrupt Triggered %d times, current State=%u, time since last trigger %dms\n", save, currentState, millis() - saveDebounceTimeout);
+            portENTER_CRITICAL_ISR(&mux);  //início da seção crítica
+              numberOfButtonInterrupts = 0; // reconhece que o botão foi pressionado e reseta o contador de interrupção //acknowledge keypress and reset interrupt counter
+            portEXIT_CRITICAL_ISR(&mux); //fim da seção crítica
+    }
+    
+    if(sel){
+      drawcalib_config(msg2, "Calibracao inicial  ", true);
+      display.fillTriangle(5, 54, 5, 47, 15, 51, WHITE);//YES
+      display.display();
+    } else {
+      drawcalib_config(msg2, "Calibracao inicial  ", true);
+      display.fillTriangle(70, 55, 70, 47, 80, 51, WHITE);//NO
+      display.display();
+    }
+    if(!currentState && (millis() - saveDebounceTimeout) > confirmTime){
+      return sel;
+    }
+  //delay(10);
+  }
 }
 
 void MadgwickQuaternionUpdate1(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
