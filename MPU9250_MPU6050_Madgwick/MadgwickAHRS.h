@@ -22,8 +22,8 @@ extern volatile float q0, q1, q2, q3;	// quaternion of sensor frame relative to 
 //---------------------------------------------------------------------------------------------------
 // Function declarations
 
-void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, float * Qu, float delta);
-void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, float az, float * Qu, float delta);
+void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, float delta);
+void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, float az, float delta);
 
 #endif
 //=====================================================================================================
