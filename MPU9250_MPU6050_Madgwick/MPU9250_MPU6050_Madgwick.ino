@@ -7,6 +7,14 @@
   Estimation of force of the grip applied by each finger using FSLP (Force Sensing Linear Potentiometer)
   Estimation of the position of the object using FSLP (Force Sensing Linear Potentiometer)
 */
+//
+//#include "BluetoothSerial.h"
+//
+//#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+//#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
+//#endif
+//
+//BluetoothSerial SerialBT;
 
 #include <SPI.h>                 // SPI communication library (not used)
 #include "Wire.h"                // I²C communication library
@@ -15,6 +23,9 @@
 #include "FSLP.h"                // FSLP header file, to get te measurements
 #include <Adafruit_GFX.h>        // Adafruit library for OLED displays
 #include <Adafruit_SSD1306.h>    // SSD1306 Display library
+
+//#include "soc/soc.h"
+//#include "soc/rtc_cntl_reg.h"
 
 #define SerialDebug true         // Set true to get Serial output for debugging and dataset printing
 #define onlyAngles  false         // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2, Yall2)
@@ -37,11 +48,11 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define DEBOUNCETIME 10          // Maximum time for button bounce (ms)
-#define confirmTime  2000        // Maximum time for confirm a choice
+#define confirmTime  1600        // Maximum time for confirm a choice
 
 #define TCA_addr 0x70 			// Address for the i²c mux 
 
-String object[num_obj] = {"Laranja", "Cubo magico", "Cartão", "Violao", "Controle videogame", "Smartphone", "Garrafa", "Caneta", "Mouse"};        // Set the object to be printed in dataset
+String object[num_obj] = {"Laranja", "Cubo magico", "Cartao", "Violao", "Controle videogame", "Smartphone", "Garrafa", "Caneta", "Mouse"};        // Set the object to be printed in dataset
 String current_finger[5] = {"Dedo 1 - Polegar", "Dedo 2 - indicador", "Dedo 3 - Médio", "Dedo 4 - Anelar", "Dedo 5 - Mindinho"};
 
 // MPU9250 Configuration. Specify sensor full scale
@@ -95,17 +106,17 @@ float   accelBias2[15] = {-0.16, 0.02, 0.00, 0.08, -0.06, -0.03, 0.28, -0.06, 0.
 float pitch1[5], yaw1[5], roll1[5], pitch2[5], yaw2[5], roll2[5]; // absolute orientation
 float a12, a22, a31, a32, a33;                                    // rotation matrix coefficients for Euler angles and gravity components MPU1
 float AA12, AA22, AA31, AA32, AA33;                               // rotation matrix coefficients for Euler angles and gravity components MPU2
-float deltat1 = 0.0f, deltat2 = 0.0f;   			                    // integration interval for both filter schemes
-uint32_t lastupdate1[5] = {0, 0, 0, 0, 0}, lastupdate2[5] =  {0, 0, 0, 0, 0};                        // used to calculate integration interval
-uint32_t Now1 = 0, Now2 = 0;                                      // used to calculate integration interval
+//float deltat1 = 0.0f, deltat2 = 0.0f;   			                    // integration interval for both filter schemes
+//uint32_t lastupdate1[5] = {0, 0, 0, 0, 0}, lastupdate2[5] =  {0, 0, 0, 0, 0};                        // used to calculate integration interval
+//uint32_t Now1 = 0, Now2 = 0;                                      // used to calculate integration interval
 
 float ax1[5], ay1[5], az1[5], gx1[5], gy1[5], gz1[5];             // variables to hold latest sensor data values of the MPU_1 for all 5 fingers
 //float mx1[5], my1[5], mz1[5]
 float ax2[5], ay2[5], az2[5], gx2[5], gy2[5], gz2[5];			// variables to hold latest sensor data values of the MPU_2 for all 5 fingers
 //float mx2[5], my2[5], mz2[5];
 
-float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             				                    // vector to hold quaternion of the MPU_1 
-float Q[4] = {1.0f, 0.0f, 0.0f, 0.0f};             				                    // vector to hold quaternion of the MPU_2
+float q[5][4] = {{1.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}}; // vector to hold all quaternions of the MPU_1 of each finger
+float Q[5][4] = {{1.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f}};    // vector to hold all quaternions of the MPU_2 of each finger
 
 // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)======================================================================
 float pi = 3.141592653589793238462643383279502884f;	// Contant PI
@@ -150,7 +161,10 @@ void IRAM_ATTR handleButtonInterrupt() {
 
 void setup()
 {
+  //WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable   detector
   Serial.begin(115200);
+  //SerialBT.begin("Luva ESP32"); //Bluetooth device name
+//  Serial.println("The device started, now you can pair it with bluetooth!");
   delay(1000);
   Wire.begin(); 					// set master mode, default on SDA/SCL   
   Wire.setClock(400000); 			// I2C frequency at 400 kHz
@@ -194,7 +208,8 @@ void setup()
     
   config_IO.mode = GPIO_MODE_INPUT;
   // Pins that are always inputs
-  config_IO.pin_bit_mask = (1<<FSL[4])|(1<<FSL[3])|(1<<FSL[2])|(1<<FSL[1])|(1<<FSL[0])|(1<<button);
+  //config_IO.pin_bit_mask = (1<<FSL[4])|(1<<FSL[3])|(1<<FSL[2])|(1<<FSL[1])|(1<<FSL[0])|(1<<button);
+  config_IO.pin_bit_mask = (1<<button);
   gpio_config(&config_IO);
 
   attachInterrupt(digitalPinToInterrupt(button), handleButtonInterrupt, CHANGE);   // Will interrupt the program in every change (incluiding the bounce)
@@ -232,6 +247,7 @@ void setup()
 	  digitalWrite(Gled, LOW);     // Turn off the LED
   }
   drawcalib_config("CHECANDO CONEXOES", "Calibracao dos dedos", false);
+  display.display();
   
   for(int i=0; i<5;i++){			    // Do this for each finger
 	  MPU_select(Finger[i]);			  // Send selection via i2c to 0x70 address
@@ -285,7 +301,8 @@ void setup()
 			Serial.println("Gyro calibration = true");
 			MPU_select(5);      // Select the Display in the mux
 			drawcalib_config("ACELEROMETRO E GIROSCOPIO", current_finger[i].c_str(), false);
-			
+      display.display();
+      
 			MPU_select(Finger[i]);        // Send selection via i2c to 0x70 address
 			float gyroBias_temp[3], accelBias_temp[3];
 			
@@ -335,6 +352,7 @@ void setup()
 		//  if(calibrationMag9250){
         //MPU_select(5);      // Select the Display in the mux
         //drawcalib_config("Movimento em 8 - IMU 1", current_finger[i].c_str(), false);
+        // display.display();
 		//	  MPU_select(Finger[i]);        // Send selection via i2c to 0x70 address
 		//	  float magBias_temp[3],magScale_temp[3];
 		//	  MPU9250.magcalMPU9250(MPU1, magBias_temp, magScale_temp); //Calibração com movimentos em 8
@@ -343,6 +361,7 @@ void setup()
 		//	  
 		//	  MPU_select(5);      // Select the Display in the mux
         //drawcalib_config("Movimento em 8 - IMU 2", current_finger[i].c_str(), false);
+        //display.display();
         //MPU_select(Finger[i]);        // Send selection via i2c to 0x70 address
 		//	  MPU9250.magcalMPU9250(MPU2, magBias_temp, magScale_temp);
 		//	  magBias2[i*3]=magBias_temp[0]; magBias2[i*3+1]=magBias_temp[1]; magBias2[i*3+2]=magBias_temp[2];
@@ -412,6 +431,7 @@ void setup()
 	Serial.println("----------------| Clean the Serial information select the object to be held |--------------------------");
 	MPU_select(5);      // Select the Display in the mux
 	drawcalib_config(object[obj_sel].c_str(), "Object selection", false);
+  display.display();
 	setupTime = millis();
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -441,6 +461,7 @@ void loop()
 				
 				MPU_select(5);      // Select the Display in the mux
 				drawcalib_config(object[obj_sel].c_str(), "Object selection", false);
+        display.display();
         }else if (currentState && buttonstate){buttonstate = false;}
         //Serial.printf("Button Interrupt Triggered %d times, current State=%u, time since last trigger %dms\n", save, currentState, millis() - saveDebounceTimeout);
         portENTER_CRITICAL_ISR(&mux);  //início da seção crítica
@@ -463,7 +484,7 @@ void loop()
 		
 		millisTime = millis() - setupTime;
 		
-		for(int iii=0; iii<1; iii++){								// Repeat for each finger
+		for(int iii=0; iii<5; iii++){								// Repeat for each finger
 			
 			MPU_select(Finger[iii]);
 		  
@@ -492,22 +513,16 @@ void loop()
 			//mz1[iii] *= magScale1[iii*3+2]; 
 			
 			for(uint8_t i = 0; i < 10; i++) { // iterate a fixed number of times per data read cycle
-				//Now1 = micros();
-				//deltat1 = ((Now1 - lastupdate1[iii])/1000000.0f); // set integration time by time elapsed since last filter update
-				//lastupdate1[iii] = Now1;
-				//MadgwickQuaternionUpdate1(-ax1[iii], ay1[iii], az1[iii], gx1[iii]*pi/180.0f, -gy1[iii]*pi/180.0f, -gz1[iii]*pi/180.0f,  my1[iii],  -mx1[iii], mz1[iii]);
-				q0 = q[0]; q1 = q[1]; q2 = q[2]; q3 = q[3]; 
-				MadgwickAHRSupdateIMU(gx1[iii]*pi/180.0f, gy1[iii]*pi/180.0f, gz1[iii]*pi/180.0f, ax1[iii], ay1[iii], az1[iii], deltat1);
-				q[0] = q0; q[1] = q1; q[2] = q2; q[3] = q3; 
+				MadgwickAHRSupdateIMU(gx1[iii]*pi/180.0f, gy1[iii]*pi/180.0f, gz1[iii]*pi/180.0f, ax1[iii], ay1[iii], az1[iii], (float*)q, iii);
 			}
      
-			a12 =   2.0f * (q[1] * q[2] + q[0] * q[3]);
+			a12 =   2.0f * (q[iii][1] * q[iii][2] + q[iii][0] * q[iii][3]);
 			//a22 =   q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3];
-			a31 =   2.0f * (q[0] * q[1] + q[2] * q[3]);
-			a32 =   2.0f * (q[1] * q[3] - q[0] * q[2]);
+			a31 =   2.0f * (q[iii][0] * q[iii][1] + q[iii][2] * q[iii][3]);
+			a32 =   2.0f * (q[iii][1] * q[iii][3] - q[iii][0] * q[iii][2]);
 			//a33 =   q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3];
-			a33 = 1 - 2*(q[1]*q[1]+q[2]*q[2]);
-			a22 = 1 - 2*(q[2]*q[2]+q[3]*q[3]); 
+			a33 = 1 - 2*(q[iii][1]*q[iii][1]+q[iii][2]*q[iii][2]);
+			a22 = 1 - 2*(q[iii][2]*q[iii][2]+q[iii][3]*q[iii][3]); 
 			
 			pitch1[iii] = asinf(a32);
 			roll1[iii]  = atan2f(a31, a33);
@@ -545,25 +560,17 @@ void loop()
 			//mz2[iii] *= magScale2[iii*3+2];
 			
 			for(uint8_t i = 0; i < 10; i++) { // iterate a fixed number of times per data read cycle
-				Now2 = micros();
-				deltat2 = ((Now2 - lastupdate2[iii])/1000000.0f); // set integration time by time elapsed since last filter update
-				lastupdate2[iii] = Now2;
-				//MadgwickQuaternionUpdate2(-ax2[iii], ay2[iii], az2[iii], gx2[iii]*pi/180.0f, -gy2[iii]*pi/180.0f, -gz2[iii]*pi/180.0f, my2[iii], -mx2[iii], mz2[iii]);
-				//Serial.print(Q[0]);Serial.print(Q[1]);Serial.print(Q[2]);Serial.println(Q[3]);
-				q0 = Q[0]; q1 = Q[1]; q2 = Q[2]; q3 = Q[3]; 
-				MadgwickAHRSupdateIMU(gx2[iii]*pi/180.0f, gy2[iii]*pi/180.0f, gz2[iii]*pi/180.0f, ax2[iii], ay2[iii], az2[iii], deltat2);
-        //MadgwickAHRSupdateIMU(gx2[iii]*pi/180.0f, -gy2[iii]*pi/180.0f, -gz2[iii]*pi/180.0f, -ax2[iii], ay2[iii], az2[iii], deltat2);
-				Q[0] = q0; Q[1] = q1; Q[2] = q2; Q[3] = q3; 
+				MadgwickAHRSupdateIMU(gx2[iii]*pi/180.0f, gy2[iii]*pi/180.0f, gz2[iii]*pi/180.0f, ax2[iii], ay2[iii], az2[iii], (float*)Q, iii);
 			}             
 			
-			AA12 =   2.0f * (Q[1] * Q[2] + Q[0] * Q[3]);
+			AA12 =   2.0f * (Q[iii][1] * Q[iii][2] + Q[iii][0] * Q[iii][3]);
 			//AA22 =   Q[0] * Q[0] + Q[1] * Q[1] - Q[2] * Q[2] - Q[3] * Q[3];
-			AA31 =   2.0f * (Q[0] * Q[1] + Q[2] * Q[3]);
-			AA32 =   2.0f * (Q[1] * Q[3] - Q[0] * Q[2]);
+			AA31 =   2.0f * (Q[iii][0] * Q[iii][1] + Q[iii][2] * Q[iii][3]);
+			AA32 =   2.0f * (Q[iii][1] * Q[iii][3] - Q[iii][0] * Q[iii][2]);
 			//AA33 =   Q[0] * Q[0] - Q[1] * Q[1] - Q[2] * Q[2] + Q[3] * Q[3];
 
-      AA33 = 1 - 2*(Q[1]*Q[1]+Q[2]*Q[2]);
-      AA22 = 1 - 2*(Q[2]*Q[2]+Q[3]*Q[3]); 
+      AA33 = 1 - 2*(Q[iii][1]*Q[iii][1]+Q[iii][2]*Q[iii][2]);
+      AA22 = 1 - 2*(Q[iii][2]*Q[iii][2]+Q[iii][3]*Q[iii][3]); 
      
 			pitch2[iii] = asinf(AA32);
 			roll2[iii]  = atan2f(AA31, AA33);
@@ -634,7 +641,7 @@ void loop()
   			} else {Serial.println(" ");}
     } else {
           for(int i=0; i<5; i++){
-        if(!onlyAngles){      // Only show the angles if set
+          if(!onlyAngles){      // Only show the angles if set
                               Serial.print(ax1[i], 2);
           Serial.print("\t"); Serial.print(ay1[i], 2); 
           Serial.print("\t"); Serial.print(az1[i], 2);
@@ -722,7 +729,7 @@ void drawcalib_config(const char msg[], const char title[], bool options){
     display.setCursor(84,45);
     display.write("NAO");
   }
-  display.display();
+  //display.display();
 }
 
 void checkbutton(){

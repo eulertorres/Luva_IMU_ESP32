@@ -3,6 +3,7 @@
 int FSLP::fslpGetPosition(uint8_t fslpSenseLine, uint8_t fslpDriveLine1, uint8_t fslpDriveLine2, uint8_t fslpBotR0)
 {
   // Step 1 - Clear the charge on the sensor.
+  pinMode(fslpDriveLine1, OUTPUT);
   digitalWrite(fslpDriveLine1, LOW);
 
   pinMode(fslpDriveLine2, OUTPUT);
@@ -45,10 +46,10 @@ float FSLP::fslpGetPressure(uint8_t fslpSenseLine, uint8_t fslpDriveLine1, uint8
   // Step 4 - Calculate the pressure.
   // Detailed information about this formula can be found in the
   // FSLP Integration Guide.
-  if (v1 == v2)
+  if (v1 < v2 || v1 == v2)
   {
     // Avoid dividing by zero, and return maximum reading.
-    return 64 * 1023;
+    return 0;
   }
   return 64.0 * v2 / (v1 - v2);
 }
