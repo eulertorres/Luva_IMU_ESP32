@@ -1,5 +1,5 @@
 # Luva_IMU_ESP32
-A code for dataset generation of different hand grips using an sensored glove with (1x) ESP32, (20x) MPU9250 and (5x) FSLP.
+A code for dataset generation of different hand grips using an sensored glove with (1x) ESP32, (10x) MPU6500 (it works for MPU 9250 and 6050) and (5x) FSLP.
 This code is contains a implementation of MagwickFilter: https://x-io.co.uk/open-source-imu-and-ahrs-algorithms/
 
 ![Esquemático mão_sem_fio](https://user-images.githubusercontent.com/60723990/174630308-1c7393af-f97f-44ca-aa25-3a77a86def19.png)
