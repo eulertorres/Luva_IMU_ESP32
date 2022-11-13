@@ -56,7 +56,7 @@ for z = 1:N_fingers
     P2=plot(DATA_SI(102,:), ThetaSaved(z,:), 'b'); % pitch
     P3=plot(DATA_SI(102,:), PsiSaved(z,:), 'g'); % yaw
     refline([0 0])
-    title('Euler Angle (degree) IMU 1')
+    title('IMU 1 [graus]')
     Timeline_1_1(z) = line('XData',x,'YData',y);
     TimeValue_1_1(z)= xlabel('');
     %legend([P1 P2 P3],{'Phi', 'Theta', 'Psi'},'Location','northwest','AutoUpdate','off');
@@ -68,7 +68,7 @@ for z = 1:N_fingers
     P2=plot(DATA_SI(102,:), ThetaSaved2(z,:), 'b'); % pitch
     P3=plot(DATA_SI(102,:), PsiSaved2(z,:), 'g'); % yaw
     refline([0 0])
-    title('Euler Angle (degree)IMU 2')
+    title('IMU 2 [graus]')
     Timeline_1_2(z) = line('XData',x,'YData',y);
     TimeValue_1_2(z) = xlabel('');
     %legend([P1 P2 P3],{'Phi', 'Theta', 'Psi'},'Location','northwest','AutoUpdate','off');
@@ -82,7 +82,7 @@ for z=1:N_fingers
     subplot(5,2,(z-1)*2+1)
     plot(DATA_SI(102,:),DATA_SI((z-1)*20+1,:),'r',DATA_SI(102,:),DATA_SI((z-1)*20+2,:),'g',DATA_SI(102,:),DATA_SI((z-1)*20+3,:),'b'); % ax ay az
     refline([0 0])
-    title('Acceleration (m/s^2) MPU 1');
+    title('Accel (m/s^2) MPU 1');
     Timeline_2_1(z) = line('XData',x,'YData',y);
     TimeValue_2_1(z)= xlabel('');
     %legend({'AccX', 'AccY', 'AccZ'},'Location','northwest','AutoUpdate','off');
@@ -91,7 +91,7 @@ for z=1:N_fingers
     subplot(5,2,(z-1)*2+2)
     plot(DATA_SI(102,:),DATA_SI((z-1)*20+7,:),'r',DATA_SI(102,:),DATA_SI((z-1)*20+8,:),'g',DATA_SI(102,:),DATA_SI((z-1)*20+9,:),'b'); % ax ay az
     refline([0 0])
-    title('Acceleration (m/s^2) MPU 2');
+    title('Accel (m/s^2) MPU 2');
     Timeline_2_2(z) = line('XData',x,'YData',y);
     TimeValue_2_2(z)= xlabel('');
     %legend({'AccX', 'AccY', 'AccZ'},'Location','northwest','AutoUpdate','off');
@@ -103,7 +103,7 @@ for z=1:N_fingers
     subplot(5,2,(z-1)*2+1)
     plot(DATA_SI(102,:),DATA_SI((z-1)*20+4,:),'r',DATA_SI(102,:),DATA_SI((z-1)*20+5,:),'g',DATA_SI(102,:),DATA_SI((z-1)*20+6,:),'b'); % gx gy gz
     refline([0 0])
-    title('Angular velocity (rad/s) MPU 1')
+    title('Gyro (rad/s) MPU 1')
     Timeline_3_1(z) = line('XData',x,'YData',y);
     TimeValue_3_1(z)= xlabel('');
     %legend({'GyroX', 'GyroY', 'GyroZ'},'Location','northwest','AutoUpdate','off');
@@ -112,7 +112,7 @@ for z=1:N_fingers
     subplot(5,2,(z-1)*2+2)
     plot(DATA_SI(102,:),DATA_SI((z-1)*20+10,:),'r',DATA_SI(102,:),DATA_SI((z-1)*20+11,:),'g',DATA_SI(102,:),DATA_SI((z-1)*20+12,:),'b'); % gx gy gz
     refline([0 0])
-    title('Angular velocity (rad/s) MPU 2')
+    title('Gyro (rad/s) MPU 2')
     Timeline_3_2(z) = line('XData',x,'YData',y);
     TimeValue_3_2(z)= xlabel('');
     %legend({'GyroX', 'GyroY', 'GyroZ'},'Location','northwest','AutoUpdate','off');
@@ -158,11 +158,11 @@ end
     
     % Poisition in y axis for the IMU 1 of each finger
     %       Finger: 0 |  1  |  3 |  4 | 5
-    difference_y = [0, 5, 7, 6, 5];
+    difference_y = [-9, 5, 10, 8, 4];
     % Poisition in x axis for the IMU 1 of each finger
-    difference_x = [-16, -7, 0, 7, 14];
-    imu_distance = -8;
-    axis_size = 25;
+    difference_x = [-18, -8, 0, 8, 16];
+    imu_distance = -15;
+    axis_size = 30;
     
     fac = [1 2 6 5;2 3 7 6;3 4 8 7;4 1 5 8;1 2 3 4;5 6 7 8];
     
@@ -230,12 +230,12 @@ for k=1:Nsamples-1
         set(Obejct_IMU2(z), 'Vertices', Result_2(:,:,k,z))
 
         %Display realtime sensor values
-         %set(TimeValue_1_1(z), 'String', sprintf('Phi: %.2f  Theta: %.2f  Psi: %.2f', PhiSaved(z,k), ThetaSaved(z,k), PsiSaved(z,k)));
-         %set(TimeValue_1_2(z), 'String', sprintf('Phi: %.2f  Theta: %.2f  Psi: %.2f', PhiSaved2(z,k), ThetaSaved2(z,k), PsiSaved2(z,k)));
-%         set(TimeValue_2_1(z), 'String', sprintf('X: %.2f  Y: %.2f  Z: %.2f', DATA_SI((z-1)*20+1,k), DATA_SI((z-1)*20+2,k), DATA_SI((z-1)*20+3,k)));	%acc1
-%         set(TimeValue_2_2(z), 'String', sprintf('X: %.2f  Y: %.2f  Z: %.2f', DATA_SI((z-1)*20+7,k), DATA_SI((z-1)*20+8,k), DATA_SI((z-1)*20+9,k)));	%acc2
-%         set(TimeValue_3_1(z), 'String', sprintf('X: %.2f  Y: %.2f  Z: %.2f', DATA_SI((z-1)*20+4,k), DATA_SI((z-1)*20+5,k), DATA_SI((z-1)*20+6,k)));	%gyro1
-%         set(TimeValue_3_2(z), 'String', sprintf('X: %.2f  Y: %.2f  Z: %.2f', DATA_SI((z-1)*20+10,k), DATA_SI((z-1)*20+11,k), DATA_SI((z-1)*20+12,k))); %gyro2
+         set(TimeValue_1_1(z), 'String', sprintf('Phi: %.2f  Theta: %.2f  Psi: %.2f', PhiSaved(z,k), ThetaSaved(z,k), PsiSaved(z,k)));
+         set(TimeValue_1_2(z), 'String', sprintf('Phi: %.2f  Theta: %.2f  Psi: %.2f', PhiSaved2(z,k), ThetaSaved2(z,k), PsiSaved2(z,k)));
+         set(TimeValue_2_1(z), 'String', sprintf('X: %.2f  Y: %.2f  Z: %.2f', DATA_SI((z-1)*20+1,k), DATA_SI((z-1)*20+2,k), DATA_SI((z-1)*20+3,k)));	%acc1
+         set(TimeValue_2_2(z), 'String', sprintf('X: %.2f  Y: %.2f  Z: %.2f', DATA_SI((z-1)*20+7,k), DATA_SI((z-1)*20+8,k), DATA_SI((z-1)*20+9,k)));	%acc2
+         set(TimeValue_3_1(z), 'String', sprintf('X: %.2f  Y: %.2f  Z: %.2f', DATA_SI((z-1)*20+4,k), DATA_SI((z-1)*20+5,k), DATA_SI((z-1)*20+6,k)));	%gyro1
+         set(TimeValue_3_2(z), 'String', sprintf('X: %.2f  Y: %.2f  Z: %.2f', DATA_SI((z-1)*20+10,k), DATA_SI((z-1)*20+11,k), DATA_SI((z-1)*20+12,k))); %gyro2
         %set(TimeValue_4, 'String', sprintf('X: %.2f  Y: %.2f  Z: %.2f', DATA_SI(7,k), DATA_SI(8,k), DATA_SI(9,k)));
         %Display timeline
          set(Timeline_1_1(z), 'XData', [DATA_SI(102, k) DATA_SI(102, k)]);

@@ -1,5 +1,6 @@
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import math
 
@@ -26,7 +27,7 @@ X.append([71.79, 71.65, 71.86, 71.79, 72.07, 71.65, 72.22, 72.43, 72.36, 72.57, 
 X.append([79.37, 79.06, 78.51, 78.51, 79.68, 79.21, 78.51, 79.37, 79.68, 79.06, 78.98, 79.84, 79.53, 78.90, 79.61, 80.00]) #Medida (gramas agua): 350
 X.append([84.24, 86.36, 84.57, 84.57, 84.74, 84.74, 84.82, 84.57, 84.57, 84.99, 84.99, 84.57, 84.99, 84.99, 84.99, 85.76]) #Medida (gramas agua): 400
 X.append([90.53, 90.62, 90.16, 90.26, 90.53, 90.62, 90.62, 90.71, 90.89, 90.89, 90.71, 90.89, 90.99, 90.89, 91.35, 91.17]) #Medida (gramas agua): 450
-X.append([96.10, 96.49, 96.59, 96.69, 91.63, 96.79, 96.49, 96.79, 96.49, 96.88, 97.38, 96.79, 96.20, 98.28, 96.79, 97.18]) #Medida (gramas agua): 500
+X.append([96.10, 96.49, 96.59, 96.69, 96.63, 96.79, 96.49, 96.79, 96.49, 96.88, 97.38, 96.79, 96.20, 98.28, 96.79, 97.18]) #Medida (gramas agua): 500
 
 #-------------------------------------------------------------------------------------------------------------------------||
 
@@ -54,7 +55,8 @@ for i in range(len(X)):
 #------------- Polotagem dos resultados ---------------------------------------------------||
 dv.plot(Yr, Desvio, color = 'blue', marker = 'x') #
 
-dv.set(title = "Desvio padrão de 16 amostras das 20 medidas",
+
+dv.set(title = "Desvio padrão de 16 amostras das 11 medidas",
        xlabel = "Força Aplicada [N]", 
        ylabel = "Desvio padrão [N]")
 
@@ -63,7 +65,11 @@ ax.set(title = "Força x condutância",
        ylabel = "Força Aplicada [N]")
 
 ax.scatter(Media,yresult, color = 'red', marker = 'x', label = 'Média da "força"', s = 100)
+plt.xticks(Yr)
+#plt.yticks(Desvio)
+ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%0.1f'))
 ax.plot(Media,yresult, color = 'red', label = 'Regressão de segundo grau')
+
 
 for i, txt in enumerate(Yg):
     ax.annotate(txt, xy = (Media[i], yresult[i]), xytext = (Media[i] - 4.5, yresult[i] + 5))
@@ -71,7 +77,6 @@ for i, txt in enumerate(Yg):
 
 ax.grid()
 ax.legend()
-plt.yticks(Yr)
 
 #print(X)
 

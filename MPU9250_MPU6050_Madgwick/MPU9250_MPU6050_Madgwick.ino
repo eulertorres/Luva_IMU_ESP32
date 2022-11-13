@@ -29,9 +29,10 @@
 
 #define SerialDebug true         // Set true to get Serial output for debugging and dataset printing
 #define onlyAngles  false         // Debug only the angles (Roll, Pitch, Yall & Roll2, Pitch 2, Yall2)
-#define matlab_sim true 
 
-#define num_obj 9				         // Number of objects that is going to be tested					
+#define num_obj 21				         // Number of objects that is going to be tested					
+
+#define stability_th 200         // Samples ignored before start dataset printing
 
 #define button 15       			   // Buton to start printing Dataset
 #define Gled   2         			   // Extra Led to indicate printing
@@ -52,7 +53,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define TCA_addr 0x70 			// Address for the i²c mux 
 
-String object[num_obj] = {"Laranja", "Cubo magico", "Cartao", "Violao", "Controle videogame", "Smartphone", "Garrafa", "Caneta", "Mouse"};        // Set the object to be printed in dataset
+String object[num_obj] = {"NONE", "Laranja", "Cubo_magico", "Cartao", "Violao", "Controle_videogame", "Smartphone", "Garrafa", "Caneta", "Mouse", "Espremer_laranja", "Manipular_cubo_magico", "Manipular_cartao", "Violao_Do", "Violao_Re", "Violao_Mi", "Usar_Smartphone", "Manipular_controle", "Encher_garrafa", "Assinatura", "Cliques_mouse"};        // Set the object to be printed in dataset
 String current_finger[5] = {"Dedo 1 - Polegar", "Dedo 2 - indicador", "Dedo 3 - Médio", "Dedo 4 - Anelar", "Dedo 5 - Mindinho"};
 
 // MPU9250 Configuration. Specify sensor full scale
@@ -79,17 +80,19 @@ bool gyro_accel_cal     = false;               // Set true to calibrate the bias
 
 //------------------------------------------------ IMPORTANT-------------------------------------------------------------------------------------------------------------
 // These can be measured once and entered here or can be calculated each time the device is powered on 
-//Gyro biases for each axis to all 10 MPU9250_1 (proximal)
-float   gyroBias1[15] = {-2.38, -1.88, 0.16, 4.06, -1.84, -0.72, -13.34, -11.16, -0.85, 0.56, 0.36, -0.12, -0.34, -7.02, 1.01};
 
-//Accelerometer biases for each axis to all MPU9250_1 (proximal)
-float   accelBias1[15] = {0.19, 0.01, -0.06, 0.14, -0.04, 0.15, 0.01, 0.10, 0.05, 0.00, 0.13, 0.02, -0.09, 0.21, -0.09};
+// MPU1: Gyroscope Bias------------------------------------
+float   gyroBias1[15] = {-2.60, -2.54, 0.15, 4.11, -2.04, -0.95, -13.37, -11.54, -0.92, 0.37, 0.13, 0.03, -1.16, -2.47, 0.61};
 
-//Gyro biases for each axis to all 10 MPU9250_2 (medium)
-float   gyroBias2[15] = {-1.04, 0.87, -0.53, -13.68, -2.37, 1.08, -5.65, -13.56, 0.10, 4.08, 1.79, 0.00, 17.00, -7.94, 1.23};
+// MPU1: Accelerometer Bias------------------------------
+float   accelBias1[15] = {0.37, -0.02, -0.12, 0.05, -0.01, 0.16, 0.02, 0.08, 0.05, 0.14, 0.04, 0.02, -0.30, 0.08, -0.11};
 
-//Accelerometer biases for each axis to all MPU9250_2 (medium)
-float   accelBias2[15] = {-0.16, 0.02, 0.00, 0.08, -0.06, -0.03, 0.28, -0.06, 0.02, 0.13, -0.02, -0.02, -0.07, 0.05, -0.34};
+// MPU2: Gyroscope Bias-----------------------------------
+float   gyroBias2[15] = {-0.60, 0.60, -0.43, -13.86, -2.63, 1.15, -5.40, -14.02, -0.14, 3.82, 1.14, -0.05, 16.65, -8.64, 1.01};
+
+// MPU2: Accelerometer Bias------------------------------
+float   accelBias2[15] = {0.06, 0.03, 0.01, -0.04, 0.00, -0.02, 0.20, -0.00, 0.02, -0.19, -0.08, -0.03, -0.13, 0.05, -0.35};
+
 
 //Magnetometer biases for each axis to all MPU9250_1 (proximal)
 //float   magBias1[15] = {-95.96, 296.88, -428.83, -95.96, 296.88, -428.83, -95.96, 296.88, -428.83, -95.96, 296.88, -428.83, -95.96, 296.88, -428.83};
@@ -106,9 +109,6 @@ float   accelBias2[15] = {-0.16, 0.02, 0.00, 0.08, -0.06, -0.03, 0.28, -0.06, 0.
 float pitch1[5], yaw1[5], roll1[5], pitch2[5], yaw2[5], roll2[5]; // absolute orientation
 float a12, a22, a31, a32, a33;                                    // rotation matrix coefficients for Euler angles and gravity components MPU1
 float AA12, AA22, AA31, AA32, AA33;                               // rotation matrix coefficients for Euler angles and gravity components MPU2
-//float deltat1 = 0.0f, deltat2 = 0.0f;   			                    // integration interval for both filter schemes
-//uint32_t lastupdate1[5] = {0, 0, 0, 0, 0}, lastupdate2[5] =  {0, 0, 0, 0, 0};                        // used to calculate integration interval
-//uint32_t Now1 = 0, Now2 = 0;                                      // used to calculate integration interval
 
 float ax1[5], ay1[5], az1[5], gx1[5], gy1[5], gz1[5];             // variables to hold latest sensor data values of the MPU_1 for all 5 fingers
 //float mx1[5], my1[5], mz1[5]
@@ -136,12 +136,15 @@ bool sel = true;                            // Selection of the user menu
 bool currentState = false;                  // If the button is currently pressed or not (after debounce)
 bool saveLastState;                         // 
 bool menu_sel = false;						// Choice of the user
+bool matlab_sim = false;                       // If the dataset is printed to Matlab simulation or not
+bool led_status = false;
 uint8_t Closed_hand = 0;	                  // If the hand is touching the object or not
 gpio_config_t config_IO;                    // Variable for ESP32 GPIO configurations
 volatile int numberOfButtonInterrupts = 0;  // Number of interrupts detected
 volatile bool lastState;                    // Last state when the button was pressed
 volatile uint32_t debounceTimeout = 0;      // Store debounce time
 uint32_t saveDebounceTimeout;               // Time when the bounce stopped
+uint8_t sample_count = 0;                   // Number of samples aquired (for estabilization matters)
 int save;                                   // 
 uint8_t obj_sel = 0;						// Object that is currently being held
 unsigned long millisTime, setupTime;		// For printing the time of the data aquisition (matlab only)
@@ -169,7 +172,6 @@ void setup()
   Wire.begin(); 					// set master mode, default on SDA/SCL   
   Wire.setClock(400000); 			// I2C frequency at 400 kHz
   delay(1000);
-  while (!Serial);
   
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
     Serial.println(F("SSD1306 allocation failed"));
@@ -180,7 +182,7 @@ void setup()
   Finger[0] = 0;              // Select the finger via i2c
   FD2[0] = 25;                // FSLP D2 (Analog INPUT/OUTPUT)
   FSL[0] = 36;                // FSLP Sense Line (Analaog INPUT)
-  FR0[0] = 1;                 // Resistor 10 kOhms Digital INPUT/OUPUT
+  FR0[0] = 19;                 // Resistor 10 kOhms Digital INPUT/OUPUT
   
   // Finger 2 (Index [Indicador])----------------------------------------------- (001)
   Finger[1] =  7;             // Select the finger via i2c
@@ -202,9 +204,11 @@ void setup()
   
   // Finger 5 (Pinky [Mindinho])------------------------------------------------ (110)
   Finger[4] =  1;         // Select the finger via i2c
-  FD2[4] = 12;            // FSLP D2 (Analog INPUT/OUTPUT)
-  FSL[4] = 32;            // FSLP Sense Line (Analaog INPUT)
-  FR0[4] = 5;             // Resistor 10 kOhms Digital INPUT/OUPUT
+  FD2[4] = 33;            // FSLP D2 (Analog INPUT/OUTPUT)
+  FSL[4] = 13;            // FSLP Sense Line (Analaog INPUT)
+  FR0[4] = 19;            // Resistor 10 kOhms Digital INPUT/OUPUT
+
+  pinMode(FD1, OUTPUT);
     
   config_IO.mode = GPIO_MODE_INPUT;
   // Pins that are always inputs
@@ -216,7 +220,7 @@ void setup()
 
   config_IO.mode = GPIO_MODE_OUTPUT;
   // Pins that are always outputs
-  config_IO.pin_bit_mask = (1<<Gled)|(1<<FD1)|(1<<M_A0)|(1<<M_A1)|(1<<M_A2);
+  config_IO.pin_bit_mask = (1<<Gled);//|(1<<FD1)|(1<<M_A0)|(1<<M_A1)|(1<<M_A2);
   gpio_config(&config_IO);
 
   GPIO.out_w1tc = 0;              // Clear pins to select MUX (Set TCA address as 0x70)
@@ -226,14 +230,14 @@ void setup()
   // Configuration menu, where the user needs to confirm which parameters will be calibrated
 
   MPU_select(5);      // Select the Display in the mux
-  delay(50);
+  delay(100);
   display.clearDisplay();
-  menu_sel = choose(" CALIBRAR MAG ACCEL ?");
+  menu_sel = choose(" CONFIGURAR LUVA ?");
   digitalWrite(Gled, HIGH);    // Turn on the LED
   delay(1500);
   digitalWrite(Gled, LOW);     // Turn off the LED
   if (menu_sel){
-	  selftest_en = choose(" INTEGRIDADE DO CHIP");
+	  selftest_en = choose("    INTEGRIDADE             DO CHIP");
 	  digitalWrite(Gled, HIGH);    // Turn on the LED
 	  delay(1500);
 	  digitalWrite(Gled, LOW);     // Turn off the LED
@@ -241,12 +245,15 @@ void setup()
 	  digitalWrite(Gled, HIGH);    // Turn on the LED
 	  delay(1500);
 	  digitalWrite(Gled, LOW);     // Turn off the LED  
-	 // calibrationMag9250 = choose("     MAGNETOMETRO");
+	  matlab_sim = choose("     SIMULACAO               MATLAB");
 	  digitalWrite(Gled, HIGH);    // Turn on the LED
 	  delay(1500);
 	  digitalWrite(Gled, LOW);     // Turn off the LED
   }
-  drawcalib_config("CHECANDO CONEXOES", "Calibracao dos dedos", false);
+  drawcalib_config("ESPERANDO CONEXÃO SERIAL", "Configuração inicial", false);
+  display.display();
+  while (!Serial);
+  drawcalib_config("CHECANDO CONEXOES", "Configuração inicial", false);
   display.display();
   
   for(int i=0; i<5;i++){			    // Do this for each finger
@@ -408,24 +415,28 @@ void setup()
 	//}
 	
 	if(gyro_accel_cal){
-		Serial.println("MPU1: COPY THAT:");
+		Serial.println("COPY THAT:");
+    Serial.println("// MPU1: Gyroscope Bias------------------------------------");
 		Serial.print("float   gyroBias1[15] = {");
 		for(int i=0; i<14; i++){
 		  Serial.print(gyroBias1[i]); Serial.print(", ");
-		} Serial.print(gyroBias1[14]); Serial.println("}");
+		} Serial.print(gyroBias1[14]); Serial.println("};");
+    Serial.println("\n// MPU1: Accelerometer Bias------------------------------");
 		Serial.print("float   accelBias1[15] = {");
 		for(int i=0; i<14; i++){
 		  Serial.print(accelBias1[i]); Serial.print(", ");
-		} Serial.print(accelBias1[14]); Serial.println("}");
+		} Serial.print(accelBias1[14]); Serial.println("};");
 		//Serial.println("MPU1: COPY THAT:");
+   Serial.println("\n// MPU2: Gyroscope Bias-----------------------------------");
 		Serial.print("float   gyroBias2[15] = {");
 		for(int i=0; i<14; i++){
 		  Serial.print(gyroBias2[i]); Serial.print(", ");
-		} Serial.print(gyroBias2[14]); Serial.println("}");
+		} Serial.print(gyroBias2[14]); Serial.println("};");
+    Serial.println("\n// MPU2: Accelerometer Bias------------------------------");
 		Serial.print("float   accelBias2[15] = {");
 		for(int i=0; i<14; i++){
 		  Serial.print(accelBias2[i]); Serial.print(", ");
-		} Serial.print(accelBias2[14]); Serial.println("}");
+		} Serial.print(accelBias2[14]); Serial.println("};");
 	}
 	
 	Serial.println("----------------| Clean the Serial information select the object to be held |--------------------------");
@@ -473,6 +484,7 @@ void loop()
       buttonstate = true;			// Start calculations and printing
       digitalWrite(Gled, HIGH);    // Turn on the LED
       delay(1500);
+      digitalWrite(Gled, LOW);    // Turn off the LED
     }
 
      if (pressure[0] == 0 && pressure[1] == 0 && pressure[2] == 0 && pressure[3] == 0 && pressure[4] == 0){ // If there's no pressure in any finger
@@ -481,7 +493,7 @@ void loop()
       } else{Closed_hand = 1;}
     	
 	if(buttonstate) {
-		
+   
 		millisTime = millis() - setupTime;
 		
 		for(int iii=0; iii<5; iii++){								// Repeat for each finger
@@ -493,9 +505,7 @@ void loop()
 			 ax1[iii] = (float)MPU9250_1_data[0]*aRes - accelBias1[iii*3];  // get actual g value, this depends on scale being set
 			 ay1[iii] = (float)MPU9250_1_data[1]*aRes - accelBias1[iii*3+1];   
 			 az1[iii] = (float)MPU9250_1_data[2]*aRes - accelBias1[iii*3+2];  
-//       ax1[iii] = (float)MPU9250_1_data[0]*aRes; // get actual g value, this depends on scale being set
-//       ay1[iii] = (float)MPU9250_1_data[1]*aRes; 
-//       az1[iii] = (float)MPU9250_1_data[2]*aRes;
+
 			// Calculate the gyro value into actual degrees per second
 			 gx1[iii] = (float)MPU9250_1_data[4]*gRes - gyroBias1[iii*3];			// get actual gyro value, this depends on scale being set
 			 gy1[iii] = (float)MPU9250_1_data[5]*gRes - gyroBias1[iii*3+1];  
@@ -513,6 +523,7 @@ void loop()
 			//mz1[iii] *= magScale1[iii*3+2]; 
 			
 			for(uint8_t i = 0; i < 10; i++) { // iterate a fixed number of times per data read cycle
+				
 				MadgwickAHRSupdateIMU(gx1[iii]*pi/180.0f, gy1[iii]*pi/180.0f, gz1[iii]*pi/180.0f, ax1[iii], ay1[iii], az1[iii], (float*)q, iii);
 			}
      
@@ -585,102 +596,169 @@ void loop()
 			//if(yaw2[iii] < 0) yaw2[iii]   += 360.0f; // Ensure yaw stays between 0 and 360
 //      if(pitch2[iii] < 0) pitch2[iii]   += 360.0f; // Ensure yaw stays between 0 and 360
 //      if(roll2[iii] < 0) roll2[iii]   += 360.0f; // Ensure yaw stays between 0 and 360			
-
-		
-		  pressure[iii] = FSLP.fslpGetPressure(FSL[iii], FD1, FD2[iii], FR0[iii]);
-			if(pressure[iii] > 0){pressure[iii] = 0.01f*pressure[iii]*pressure[iii] + 0.5f*pressure[iii]+12;}
-			int pos = FSLP.fslpGetPosition(FSL[iii], FD1, FD2[iii], FR0[iii]);
-			pos_mm[iii] = pos*0.018315f;
+	  
 		}
+   
+    //  ---------------------Pressure aquisition-----------------------------------------
+    
+    for (int k = 0; k < 5; k++){
+      // Step 1 - Set up the appropriate drive line voltages.
+      digitalWrite(FD1, HIGH);
+  
+      pinMode(FR0[k], OUTPUT);
+      digitalWrite(FR0[k], LOW);
+  
+      pinMode(FSL[k], INPUT);
+  
+      pinMode(FD2[k], INPUT);
+
+      // Step 2 - Wait for the voltage to stabilize.
+      delayMicroseconds(10);
+
+        // Step 3 - Take two measurements.
+      int v1 = analogRead(FD2[k]);
+      int v2 = analogRead(FSL[k]);
+
+      if(v2 != v1){
+        pressure[k] = 64.0 * v2 / (v1 - v2);
+      }else {pressure[k] = 0;}
+
+      if(k==4){pressure[k] = 64 * v2 /(4095 - v2);} // Damaged sensor
+
+      // Conversion from Siemens to Newtons by interpolation (Calibration Program)
+      pressure[k] = 0.00438449*pressure[k]*pressure[k] + 0.09705429*pressure[k] + 0.13164553;
+    }
+
+    //  ---------------------Position aquisition-----------------------------------------
+    
+    for (int k = 0; k < 5; k++){
+      // Step 1 - Clear all charges 
+       pinMode(FSL[k], OUTPUT);
+      digitalWrite(FSL[k], LOW);     
+      
+      pinMode(FD1, OUTPUT);
+      digitalWrite(FD1, LOW);
+    
+      pinMode(FD2[k], OUTPUT);
+      digitalWrite(FD2[k], LOW);
+    
+      pinMode(FR0[k], OUTPUT);
+      digitalWrite(FR0[k], LOW);
+
+      // Step 2 - Set up appropriate drive line voltages.
+      digitalWrite(FD1, HIGH);
+      pinMode(FR0[k], INPUT);
+      pinMode(FSL[k], INPUT);
+
+      // Step 3 - Wait for the voltage to stabilize.
+      delayMicroseconds(10);
+    
+      // Step 4 - Take the measurement.
+      if(pressure[k]==0){pos_mm[k] = 0;} else{ 
+        pos_mm[k] = analogRead(FSL[k]);
+      }
+      if(k==4){pos_mm[4] = pos_mm[3]*0.01221;}else{pos_mm[k] = pos_mm[k]*0.018315;} // faulty sensor counter measure ***** REMOVE WHEN FIXED *****
+     
+      
+    }
+    
 	}
+ 
 	/* ====================================================================================================                                   
 	----------------------------------------|DATASET PRINTING|---------------------------------------------
 	=======================================================================================================*/
-	//}
+
+  // Each iteration is aprxoimately 59ms. Therefore the sample frequency is 17 samples/s
+  // For estabilization of the filtering, its recommended a 10 second treshold to start printing the effective data. that aprroximately 170 samples
+  // 200 samples is not printed at the beggining (blinking LED) 
 
 	if(buttonstate) {					// If the button is set
-    if(!matlab_sim){
-  		for(int i=0; i<5; i++){
-  			if(!onlyAngles){			// Only show the angles if set
-  									          Serial.print(ax1[i]);
-  				Serial.print(", "); Serial.print(ay1[i]); 
-  				Serial.print(", "); Serial.print(az1[i]);
-  				Serial.print(", "); Serial.print( gx1[i], 2); 
-  				Serial.print(", "); Serial.print( gy1[i], 2); 
-  				Serial.print(", "); Serial.print( gz1[i], 2);
-  				Serial.print(", "); Serial.print(ax2[i]);  
-  				Serial.print(", "); Serial.print(ay2[i]); 
-  				Serial.print(", "); Serial.print(az2[i]);		
-  				Serial.print(", "); Serial.print( gx2[i], 2); 
-  				Serial.print(", "); Serial.print( gy2[i], 2); 
-  				Serial.print(", "); Serial.print( gz2[i], 2);		
-  				//Serial.print(", "); Serial.print( (int)mx1[i] ); 
-  				//Serial.print(", "); Serial.print( (int)my1[i] ); 
-  				//Serial.print(", "); Serial.print( (int)mz1[i] );
-  				//Serial.print(", "); Serial.print( (int)mx2[i] ); 
-  				//Serial.print(", "); Serial.print( (int)my2[i] ); 
-  				//Serial.print(", "); Serial.print( (int)mz2[i] );
-  			  Serial.print(", ");
-  			}		
-  			                    Serial.print(roll1[i], 2);
-  			Serial.print(", "); Serial.print(pitch1[i], 2);
-  			Serial.print(", "); Serial.print(yaw1[i], 2);
-  			Serial.print(", "); Serial.print(roll2[i], 2);
-  			Serial.print(", "); Serial.print(pitch2[i], 2);		
-  			Serial.print(", "); Serial.print(yaw2[i], 2);
-  			if(!onlyAngles){			// Only show the angles if set
-  				Serial.print(", ");Serial.print(pressure[i]);
-  				Serial.print(", ");Serial.print(pos_mm[i]);
-         	Serial.print(", ");
-  			}
-  		}
-  			if(!onlyAngles){
-  				                   Serial.print(Closed_hand);
-  				//Serial.print(", ");Serial.print(millisTime/1000);
-  				Serial.print(", ");Serial.println(object[obj_sel]);
-  			} else {Serial.println(" ");}
-    } else {
-          for(int i=0; i<5; i++){
+    if(sample_count>200){
+      if(!matlab_sim){
+    		for(int i=0; i<5; i++){
+    			if(!onlyAngles){			// Only show the angles if set
+    									          Serial.print(ax1[i]);
+    				Serial.print(", "); Serial.print(ay1[i]); 
+    				Serial.print(", "); Serial.print(az1[i]);
+    				Serial.print(", "); Serial.print( gx1[i], 2); 
+    				Serial.print(", "); Serial.print( gy1[i], 2); 
+    				Serial.print(", "); Serial.print( gz1[i], 2);
+    				Serial.print(", "); Serial.print(ax2[i]);  
+    				Serial.print(", "); Serial.print(ay2[i]); 
+    				Serial.print(", "); Serial.print(az2[i]);		
+    				Serial.print(", "); Serial.print( gx2[i], 2); 
+    				Serial.print(", "); Serial.print( gy2[i], 2); 
+    				Serial.print(", "); Serial.print( gz2[i], 2);		
+    				//Serial.print(", "); Serial.print( (int)mx1[i] ); 
+    				//Serial.print(", "); Serial.print( (int)my1[i] ); 
+    				//Serial.print(", "); Serial.print( (int)mz1[i] );
+    				//Serial.print(", "); Serial.print( (int)mx2[i] ); 
+    				//Serial.print(", "); Serial.print( (int)my2[i] ); 
+    				//Serial.print(", "); Serial.print( (int)mz2[i] );
+    			  Serial.print(", ");
+    			}		
+    			                    Serial.print(roll1[i], 2);
+    			Serial.print(", "); Serial.print(pitch1[i], 2);
+    			Serial.print(", "); Serial.print(yaw1[i], 2);
+    			Serial.print(", "); Serial.print(roll2[i], 2);
+    			Serial.print(", "); Serial.print(pitch2[i], 2);		
+    			Serial.print(", "); Serial.print(yaw2[i], 2);
+    			if(!onlyAngles){			// Only show the angles if set
+    				Serial.print(", ");Serial.print(pressure[i]);
+    				Serial.print(", ");Serial.print(pos_mm[i]);
+           	Serial.print(", ");
+    			}
+    		}
+    			if(!onlyAngles){
+    				                   Serial.print(Closed_hand);
+    				//Serial.print(", ");Serial.print(millisTime/1000);
+    				Serial.print(", ");Serial.println(object[obj_sel]);
+    			} else {Serial.println(" ");}
+      } else {
+            for(int i=0; i<5; i++){
+            if(!onlyAngles){      // Only show the angles if set
+                                Serial.print( ax1[i], 2);
+            Serial.print("\t"); Serial.print( ay1[i], 2); 
+            Serial.print("\t"); Serial.print( az1[i], 2);
+            Serial.print("\t"); Serial.print( gx1[i], 2); 
+            Serial.print("\t"); Serial.print( gy1[i], 2); 
+            Serial.print("\t"); Serial.print( gz1[i], 2);
+            Serial.print("\t"); Serial.print( ax2[i], 2);  
+            Serial.print("\t"); Serial.print( ay2[i], 2); 
+            Serial.print("\t"); Serial.print( az2[i], 2);   
+            Serial.print("\t"); Serial.print( gx2[i], 2); 
+            Serial.print("\t"); Serial.print( gy2[i], 2); 
+            Serial.print("\t"); Serial.print( gz2[i], 2);   
+  //          Serial.print(", "); Serial.print(mx1[i] ); 
+  //          Serial.print(", "); Serial.print(my1[i] ); 
+  //          Serial.print(", "); Serial.print(mz1[i] );
+  //          Serial.print(", "); Serial.print(mx2[i] ); // The mpu used doesnt have a magnetometer (yes, it was a scam :T )
+  //          Serial.print(", "); Serial.print(my2[i] ); 
+  //          Serial.print(", "); Serial.print(mz2[i] );
+            Serial.print("\t");
+          }   
+                              Serial.print(roll1[i], 2);
+          Serial.print("\t"); Serial.print(pitch1[i], 2);
+          Serial.print("\t"); Serial.print(yaw1[i], 2);
+          Serial.print("\t"); Serial.print(roll2[i], 2);
+          Serial.print("\t"); Serial.print(pitch2[i], 2);   
+          Serial.print("\t"); Serial.print(yaw2[i], 2);
           if(!onlyAngles){      // Only show the angles if set
-                              Serial.print(ax1[i], 2);
-          Serial.print("\t"); Serial.print(ay1[i], 2); 
-          Serial.print("\t"); Serial.print(az1[i], 2);
-          Serial.print("\t"); Serial.print( gx1[i], 2); 
-          Serial.print("\t"); Serial.print( gy1[i], 2); 
-          Serial.print("\t"); Serial.print( gz1[i], 2);
-          Serial.print("\t"); Serial.print(ax2[i], 2);  
-          Serial.print("\t"); Serial.print(ay2[i], 2); 
-          Serial.print("\t"); Serial.print(az2[i], 2);   
-          Serial.print("\t"); Serial.print( gx2[i], 2); 
-          Serial.print("\t"); Serial.print( gy2[i], 2); 
-          Serial.print("\t"); Serial.print( gz2[i], 2);   
-          //Serial.print(", "); Serial.print( (int)mx1[i] ); 
-          //Serial.print(", "); Serial.print( (int)my1[i] ); 
-          //Serial.print(", "); Serial.print( (int)mz1[i] );
-          //Serial.print(", "); Serial.print( (int)mx2[i] ); 
-          //Serial.print(", "); Serial.print( (int)my2[i] ); 
-          //Serial.print(", "); Serial.print( (int)mz2[i] );
-          Serial.print("\t");
-        }   
-                            Serial.print(roll1[i], 2);
-        Serial.print("\t"); Serial.print(pitch1[i], 2);
-        Serial.print("\t"); Serial.print(yaw1[i], 2);
-        Serial.print("\t"); Serial.print(roll2[i], 2);
-        Serial.print("\t"); Serial.print(pitch2[i], 2);   
-        Serial.print("\t"); Serial.print(yaw2[i], 2);
-        if(!onlyAngles){      // Only show the angles if set
-          Serial.print("\t");Serial.print(pressure[i]);
-          Serial.print("\t");Serial.print(pos_mm[i]);
-          Serial.print("\t");
-        }
+            Serial.print("\t");Serial.print(pressure[i]);
+            Serial.print("\t");Serial.print(pos_mm[i]);
+            Serial.print("\t");
+          }
+        } //Serial.println(" ");
+          if(!onlyAngles){
+                               Serial.print(Closed_hand);
+            Serial.print("\t");Serial.println(millisTime);
+          } else {Serial.println(" ");}
       }
-        if(!onlyAngles){
-                             Serial.print(Closed_hand);
-          Serial.print("\t");Serial.println(millisTime);
-          //Serial.print(", ");Serial.println(object[obj_sel]);
-        } else {Serial.println(" ");}
-    }
-  } else {digitalWrite(Gled, LOW);}	// Else, turn off the LED and stop printing the dataset
+    }else {if(sample_count % 15 == 0){digitalWrite(Gled, led_status); led_status = !led_status;}
+          sample_count++; 
+          //Serial.print(sample_count); Serial.print("\t"); Serial.print(sample_count % 15);Serial.print("\t"); Serial.println(digitalRead(Gled));
+          } // Blink the LED to wait for filter estabilization 
+  } else {digitalWrite(Gled, LOW); sample_count = 0;}	// Else, turn off the LED and stop printing the dataset
 }
 
 //===================================================================================================================
